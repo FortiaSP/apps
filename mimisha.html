@@ -60,7 +60,7 @@ input[type=range]{flex:1;accent-color:var(--accent);max-width:120px}
 #mine-layer{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 
 /* step3 下部コントロール */
-.step3-ctrl{position:fixed;bottom:0;left:0;right:0;z-index:10;padding:16px;display:flex;flex-direction:column;gap:10px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto}
+.step3-ctrl{position:fixed;bottom:0;left:0;right:0;z-index:10;padding:16px;display:flex;flex-direction:column;gap:10px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto;touch-action:manipulation}
 
 /* STEP4: 比較アニメ */
 .compare-wrap{position:fixed;inset:0;z-index:3}
@@ -653,7 +653,7 @@ function renderMine(){
 }
 
 // ---- Fine adjustment buttons ----
-const FINE_STEP = { angle: 0.01 * Math.PI / 180, tx: 1, ty: 1, scale: 0.01 };
+const FINE_STEP = { angle: 0.1 * Math.PI / 180, tx: 1, ty: 1, scale: 0.01 };
 
 function fineAdjust(key, dir){
   T[key] += FINE_STEP[key] * dir;
