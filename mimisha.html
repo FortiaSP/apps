@@ -797,6 +797,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   descBar.style.top = stepperH + 'px';
   if(floatCtrl) floatCtrl.style.top = (stepperH + descBar.offsetHeight + 6) + 'px';
 
+  // 初回はstep1なのでグリッドキャンバスを表示
+  document.getElementById('grid-canvas1').style.display = 'block';
+
   await populateCameraList();
   startCamera(1);
   startGrid1();
