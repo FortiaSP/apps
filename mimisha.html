@@ -12,9 +12,19 @@
   --accent:#7c9fff;--accent2:#5fffb0;
   --radius:12px;--radius-sm:8px;
 }
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans','Yu Gothic UI',sans-serif;min-height:100dvh;display:flex;flex-direction:column;overflow-x:hidden}
-/* STEPPER */
-.stepper{display:flex;align-items:center;padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+
+
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans','Yu Gothic UI',sans-serif;overflow:hidden;width:100dvw;height:100dvh}
+
+/* カメラ映像：全画面fixed */
+.cam-bg{position:fixed;inset:0;width:100dvw;height:100dvh;z-index:0;background:#000}
+.cam-bg video{width:100%;height:100%;object-fit:cover;display:block}
+
+/* オーバーレイキャンバス（step2用） */
+.overlay-canvas{position:fixed;inset:0;width:100dvw;height:100dvh;pointer-events:none;z-index:2}
+
+/* STEPPER：上端固定オーバーレイ */
+.stepper{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;padding:12px 16px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .stepper-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;opacity:.4;transition:opacity .2s}
 .stepper-item.done,.stepper-item.current{opacity:1}
 .stepper-dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;color:var(--muted);transition:all .2s}
@@ -24,50 +34,60 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .stepper-item.current .stepper-label{color:var(--text)}
 .stepper-line{width:20px;height:2px;background:var(--border);flex-shrink:0;margin-bottom:18px}
 
-/* STEPS */
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.step{display:none;flex-direction:column;flex:1;padding:16px;gap:14px;overflow-y:auto}
-.step.active{display:flex}
-.step-title{font-size:13px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.08em}
-.step-desc{font-size:15px;line-height:1.6}
+/* STEPS：全画面、UIはオーバーレイ */
+.main{position:fixed;inset:0;z-index:5;pointer-events:none}
+.step{display:none;position:absolute;inset:0;pointer-events:none}
+.step.active{display:block}
 
-/* CAMERA */
-.cam-wrap{position:relative;width:100%;aspect-ratio:3/4;background:#000;border-radius:var(--radius);overflow:hidden;flex-shrink:0}
-.cam-wrap video{width:100%;height:100%;object-fit:cover;display:block}
-.overlay-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.cam-controls{position:absolute;bottom:16px;left:0;right:0;display:flex;justify-content:center;align-items:center;padding:0 20px}
-.cam-controls-spacer{flex:1}
-.cam-select-wrap{flex:1;display:flex;justify-content:flex-end;align-items:center}
-select.cam-select{background:rgba(0,0,0,.5);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 8px;font-size:12px;max-width:110px;cursor:pointer;-webkit-appearance:none;appearance:none;text-align:center}
-.shutter{width:64px;height:64px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.4);cursor:pointer;transition:transform .1s}
+/* カメラUIコントロール群（映像の上に重ねる） */
+.cam-controls{position:fixed;bottom:32px;left:0;right:0;display:flex;justify-content:center;align-items:flex-end;gap:20px;z-index:10;pointer-events:auto}
+.shutter{width:72px;height:72px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.4);cursor:pointer;transition:transform .1s}
 .shutter:active{transform:scale(.92)}
-.float-ctrl{position:absolute;top:12px;left:12px;right:12px;display:flex;align-items:center;gap:8px}
-.float-ctrl label{font-size:12px;color:#fff;text-shadow:0 1px 3px #000;white-space:nowrap}
-input[type=range]{flex:1;accent-color:var(--accent)}
-.float-val{font-size:12px;color:#fff;text-shadow:0 1px 3px #000;min-width:34px;text-align:right}
 
-/* OVERLAY TOGGLE */
-.ov-toggle{position:absolute;top:46px;right:12px;display:flex;border-radius:6px;overflow:hidden;border:1px solid rgba(255,255,255,.3)}
+.file-btn{position:fixed;bottom:40px;left:32px;z-index:10;pointer-events:auto;display:flex;align-items:center}
+.file-btn label{display:flex;align-items:center;gap:6px;padding:10px 16px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:var(--radius-sm);font-size:13px;font-weight:600;color:#fff;cursor:pointer;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+
+/* 説明文バー：ステッパー直下 */
+.step-desc-bar{position:fixed;left:0;right:0;z-index:10;padding:8px 16px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);font-size:13px;color:var(--text);pointer-events:none}
+
+/* step2コントロールバー */
+.float-ctrl{position:fixed;left:12px;right:12px;display:flex;align-items:center;gap:8px;z-index:10;pointer-events:auto;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:6px 10px;border-radius:var(--radius-sm)}
+.float-ctrl label{font-size:12px;color:#fff;white-space:nowrap}
+input[type=range]{flex:1;accent-color:var(--accent);max-width:120px}
+.float-val{font-size:12px;color:#fff;min-width:30px;text-align:right}
+
+/* OVERLAY TOGGLE：float-ctrl内 */
+.ov-toggle{display:flex;border-radius:6px;overflow:hidden;border:1px solid rgba(255,255,255,.3);flex-shrink:0}
 .ov-toggle button{padding:4px 10px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:rgba(0,0,0,.45);color:rgba(255,255,255,.7);transition:all .15s}
 .ov-toggle button.active{background:var(--accent);color:#000}
 
-.adjust-wrap{position:relative;width:100%;aspect-ratio:3/4;background:#111;border-radius:var(--radius);overflow:hidden;flex-shrink:0;touch-action:none}
+/* STEP3: 位置合わせ */
+.adjust-wrap{position:fixed;inset:0;z-index:3;touch-action:none;pointer-events:auto}
 #target-layer{position:absolute;inset:0;width:100%;height:100%}
 #mine-layer{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 
-/* COMPARE (step4) */
-.compare-wrap{position:relative;width:100%;aspect-ratio:3/4;background:#000;border-radius:var(--radius);overflow:hidden;flex-shrink:0}
+/* step3 下部コントロール */
+.step3-ctrl{position:fixed;bottom:0;left:0;right:0;z-index:10;padding:16px;display:flex;flex-direction:column;gap:10px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto}
+
+/* STEP4: 比較アニメ */
+.compare-wrap{position:fixed;inset:0;z-index:3}
 #compare-canvas{width:100%;height:100%}
 
-/* BUTTONS */
+/* step4 下部コントロール */
+.step4-ctrl{position:fixed;bottom:0;left:0;right:0;z-index:10;padding:16px;display:flex;flex-direction:column;gap:10px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:auto}
+
+/* カメラセレクター */
+.cam-selector{position:fixed;bottom:44px;z-index:10;pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:4px}
+.cam-selector select{appearance:none;-webkit-appearance:none;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.3);border-radius:var(--radius-sm);color:#fff;font-size:11px;padding:6px 8px;max-width:90px;text-align:center;cursor:pointer}
+.cam-selector select option{background:#1a1a1a;color:#fff}
+.cam-selector-label{font-size:10px;color:rgba(255,255,255,.6)}
 .btn{padding:12px 20px;border-radius:var(--radius-sm);border:none;font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
 .btn-primary{background:var(--accent);color:#000}
 .btn-primary:active{opacity:.85;transform:scale(.98)}
-.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-secondary{background:rgba(36,36,36,.9);color:var(--text);border:1px solid var(--border)}
 .btn-secondary:active{opacity:.75}
 .btn-row{display:flex;gap:10px}
 .btn-row .btn{flex:1}
-.divider{height:1px;background:var(--border);flex-shrink:0}
 
 /* CTRL ROW */
 .ctrl-row{display:flex;align-items:center;gap:10px}
@@ -80,6 +100,7 @@ input[type=range]{flex:1;accent-color:var(--accent)}
 </head>
 <body>
 
+<!-- ステッパー：上端固定オーバーレイ -->
 <div class="stepper">
   <div class="stepper-item current" id="st1" onclick="goStep(1)">
     <div class="stepper-dot">1</div>
@@ -102,102 +123,103 @@ input[type=range]{flex:1;accent-color:var(--accent)}
   </div>
 </div>
 
-<div class="main">
+<!-- 説明文バー：ステッパー直下 -->
+<div class="step-desc-bar" id="desc-bar">目標となる絵を撮影します</div>
 
-<!-- STEP 1: 目標絵撮影 -->
-<div class="step active" id="step1">
-  <div class="step-title">手順 1</div>
-  <div class="step-desc">目標となる絵を撮影します</div>
-  <div class="cam-wrap">
-    <video id="video1" autoplay playsinline muted></video>
-    <canvas class="overlay-canvas" id="grid-canvas1"></canvas>
-    <div class="cam-controls">
-      <div class="cam-controls-spacer"></div>
-      <button class="shutter" onclick="capture(1)"></button>
-      <div class="cam-select-wrap">
-        <select class="cam-select" id="cam-select1" onchange="switchCamera(1,this.value)">
-          <option value="">カメラ選択</option>
-        </select>
-      </div>
-    </div>
-  </div>
-  <label class="btn btn-secondary" style="cursor:pointer">
-    📁 ファイルから選択
-    <input type="file" accept="image/*" style="display:none" onchange="loadFile(1,this)">
-  </label>
-  <canvas id="snap1" style="display:none"></canvas>
+<!-- カメラ映像：全画面背景（step1/2で使用） -->
+<div class="cam-bg" id="cam-bg">
+  <video id="video1" autoplay playsinline muted></video>
+  <video id="video2" autoplay playsinline muted style="display:none"></video>
 </div>
 
-<!-- STEP 2: 自分の絵撮影 -->
-<div class="step" id="step2">
-  <div class="step-title">手順 2</div>
-  <div class="step-desc">目標絵を透かしながら自分の絵を撮影します</div>
-  <div class="cam-wrap">
-    <video id="video2" autoplay playsinline muted></video>
-    <canvas class="overlay-canvas" id="overlay-canvas"></canvas>
+<!-- step2用オーバーレイキャンバス -->
+<canvas class="overlay-canvas" id="overlay-canvas" style="display:none"></canvas>
+
+<!-- step1用グリッドキャンバス -->
+<canvas class="overlay-canvas" id="grid-canvas1" style="display:none"></canvas>
+
+<!-- ステップ別UI -->
+<div class="main">
+
+  <!-- STEP 1 UI -->
+  <div class="step active" id="step1">
+    <div class="cam-controls">
+      <button class="shutter" onclick="capture(1)"></button>
+      <div class="cam-selector">
+        <span class="cam-selector-label">カメラ</span>
+        <select id="cam-select1" onchange="switchCamera(1,this.value)"></select>
+      </div>
+    </div>
+    <div class="file-btn">
+      <label>📁 選択
+        <input type="file" accept="image/*" style="display:none" onchange="loadFile(1,this)">
+      </label>
+    </div>
+    <canvas id="snap1" style="display:none"></canvas>
+  </div>
+
+  <!-- STEP 2 UI -->
+  <div class="step" id="step2">
     <div class="float-ctrl">
       <label>透明度</label>
       <input type="range" id="ov-opacity" min="0" max="100" value="35" oninput="ovOpacity=this.value/100;document.getElementById('ov-val').textContent=this.value+'%'">
       <span class="float-val" id="ov-val">35%</span>
-    </div>
-    <div class="ov-toggle">
-      <button id="btn-ov-img" class="active" onclick="setOvMode('image')">画像</button>
-      <button id="btn-ov-edge" onclick="setOvMode('edge')">エッジ</button>
+      <div class="ov-toggle">
+        <button id="btn-ov-img" class="active" onclick="setOvMode('image')">画像</button>
+        <button id="btn-ov-edge" onclick="setOvMode('edge')">エッジ</button>
+      </div>
     </div>
     <div class="cam-controls">
-      <div class="cam-controls-spacer"></div>
       <button class="shutter" onclick="capture(2)"></button>
-      <div class="cam-select-wrap">
-        <select class="cam-select" id="cam-select2" onchange="switchCamera(2,this.value)">
-          <option value="">カメラ選択</option>
-        </select>
+      <div class="cam-selector">
+        <span class="cam-selector-label">カメラ</span>
+        <select id="cam-select2" onchange="switchCamera(2,this.value)"></select>
+      </div>
+    </div>
+    <div class="file-btn">
+      <label>📁 選択
+        <input type="file" accept="image/*" style="display:none" onchange="loadFile(2,this)">
+      </label>
+    </div>
+    <canvas id="snap2" style="display:none"></canvas>
+  </div>
+
+  <!-- STEP 3 UI -->
+  <div class="step" id="step3">
+    <div class="adjust-wrap" id="adjust-wrap">
+      <canvas id="target-layer"></canvas>
+      <canvas id="mine-layer"></canvas>
+    </div>
+    <div class="step3-ctrl">
+      <div class="ctrl-row">
+        <span class="ctrl-label">自分の絵の透明度</span>
+        <input type="range" id="mine-opacity" min="10" max="100" value="60" oninput="mineOpacity=this.value/100;renderMine()">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="resetTransform()">リセット</button>
+        <button class="btn btn-primary" onclick="goStep(4)">比較アニメ開始 →</button>
       </div>
     </div>
   </div>
-  <label class="btn btn-secondary" style="cursor:pointer">
-    📁 ファイルから選択
-    <input type="file" accept="image/*" style="display:none" onchange="loadFile(2,this)">
-  </label>
-  <canvas id="snap2" style="display:none"></canvas>
-</div>
 
-<!-- STEP 3: 手動位置合わせ -->
-<div class="step" id="step3">
-  <div class="step-title">手順 3</div>
-  <div class="step-desc">自分の絵をドラッグ・ピンチで目標に合わせてください</div>
-  <div class="adjust-wrap" id="adjust-wrap">
-    <canvas id="target-layer"></canvas>
-    <canvas id="mine-layer"></canvas>
+  <!-- STEP 4 UI -->
+  <div class="step" id="step4">
+    <div class="compare-wrap">
+      <canvas id="compare-canvas"></canvas>
+    </div>
+    <div class="step4-ctrl">
+      <div class="ctrl-row">
+        <span class="ctrl-label">切替速度</span>
+        <input type="range" id="speed-slider" min="200" max="2000" value="700" step="100"
+          oninput="animSpeed=+this.value;document.getElementById('speed-val').textContent=(this.value/1000).toFixed(1)+'s';restartAnim()">
+        <span id="speed-val" style="font-size:13px;color:var(--muted);min-width:36px">0.7s</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goStep(3)">← 位置修正</button>
+        <button class="btn btn-secondary" onclick="goStep(2)">再撮影</button>
+      </div>
+    </div>
   </div>
-  <div class="ctrl-row">
-    <span class="ctrl-label">自分の絵の透明度</span>
-    <input type="range" id="mine-opacity" min="10" max="100" value="60" oninput="mineOpacity=this.value/100;renderMine()">
-  </div>
-  <div class="btn-row">
-    <button class="btn btn-secondary" onclick="resetTransform()">リセット</button>
-    <button class="btn btn-primary" onclick="goStep(4)">比較アニメ開始 →</button>
-  </div>
-</div>
-
-<!-- STEP 4: 比較アニメ -->
-<div class="step" id="step4">
-  <div class="step-title">手順 4</div>
-  <div class="step-desc">2枚を交互に表示して差異を確認します</div>
-  <div class="compare-wrap">
-    <canvas id="compare-canvas"></canvas>
-  </div>
-  <div class="ctrl-row">
-    <span class="ctrl-label">切替速度</span>
-    <input type="range" id="speed-slider" min="200" max="2000" value="700" step="100"
-      oninput="animSpeed=+this.value;document.getElementById('speed-val').textContent=(this.value/1000).toFixed(1)+'s';restartAnim()">
-    <span id="speed-val" style="font-size:13px;color:var(--muted);min-width:36px">0.7s</span>
-  </div>
-  <div class="divider"></div>
-  <div class="btn-row">
-    <button class="btn btn-secondary" onclick="goStep(3)">← 位置修正</button>
-    <button class="btn btn-secondary" onclick="goStep(2)">再撮影</button>
-  </div>
-</div>
 
 </div><!-- /main -->
 
@@ -236,6 +258,14 @@ function goStep(n){
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById('step'+n).classList.add('active');
 
+  // 説明文バー切り替え
+  const descs = ['目標となる絵を撮影します','目標絵を透かしながら自分の絵を撮影します','自分の絵をドラッグ・ピンチで目標に合わせてください','2枚を交互に表示して差異を確認します'];
+  const descBar = document.getElementById('desc-bar');
+  descBar.textContent = descs[n-1];
+  // float-ctrlのtopをdesc-bar直下に揃える
+  const floatCtrl = document.querySelector('.float-ctrl');
+  if(floatCtrl) floatCtrl.style.top = (descBar.offsetTop + descBar.offsetHeight + 6) + 'px';
+
   for(let i=1;i<=4;i++){
     const el = document.getElementById('st'+i);
     el.classList.remove('done','current');
@@ -243,83 +273,104 @@ function goStep(n){
     if(i === n) el.classList.add('current');
   }
 
+  // カメラ背景の表示切り替え
+  const camBg = document.getElementById('cam-bg');
+  camBg.style.display = (n === 1 || n === 2) ? 'block' : 'none';
+
+  // video切り替え
+  const v1 = document.getElementById('video1');
+  const v2 = document.getElementById('video2');
+  v1.style.display = (n === 1) ? 'block' : 'none';
+  v2.style.display = (n === 2) ? 'block' : 'none';
+
+  // キャンバス表示切り替え
+  document.getElementById('grid-canvas1').style.display    = (n === 1) ? 'block' : 'none';
+  document.getElementById('overlay-canvas').style.display  = (n === 2) ? 'block' : 'none';
+
   // Camera management
-  [1,2].forEach(id => { if(id !== n) stopCamera(id); });
-  if(n === 1) startCamera(1);
-  if(n === 2){
-    startCamera(2);
-    startOverlay();
-    // step1と同じカメラリストをstep2のセレクターにも反映
-    populateCamSelect(2).then(()=>{
-      const s1 = document.getElementById('cam-select1');
-      const s2 = document.getElementById('cam-select2');
-      if(s1 && s2) s2.value = s1.value;
-    });
-  }
-  if(n === 1) startGrid1();
-  if(n === 3){ stopCamera(2); initAdjust(); }
+  if(n === 1){ stopCamera(2); startCamera(1); startGrid1(); }
+  if(n === 2){ stopCamera(1); startCamera(2); startOverlay(); }
+  if(n === 3){ stopCamera(1); stopCamera(2); requestAnimationFrame(() => initAdjust()); }
   if(n === 4){ startAnim(); }
 }
 
 // ===============================================================
 // CAMERA
 // ===============================================================
+let selectedDeviceId = null; // step1/2で共有する選択中deviceId
+
+async function populateCameraList(){
+  try{
+    // 権限取得のため一度getUserMediaを呼ぶ
+    const tmp = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+    tmp.getTracks().forEach(t => t.stop());
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d => d.kind === 'videoinput');
+
+    // 背面カメラのみ絞り込み（labelにback/rear/環境/後を含む、または判定不能な場合は全表示）
+    const backCams = cams.filter(d => /back|rear|environment|後|背面/i.test(d.label));
+    const list = backCams.length > 0 ? backCams : cams;
+
+    // ラベル生成：「広角」「望遠」「超広角」などをlabelから推定
+    ['cam-select1','cam-select2'].forEach(id => {
+      const sel = document.getElementById(id);
+      if(!sel) return;
+      sel.innerHTML = '';
+      list.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        // ラベルが取れない場合は番号で代用
+        const raw = d.label || `カメラ ${i+1}`;
+        opt.textContent = simplifyLabel(raw, i);
+        sel.appendChild(opt);
+      });
+    });
+
+    // デフォルト：最初のカメラ（通常は標準広角）
+    selectedDeviceId = list[0]?.deviceId || null;
+  } catch(e){
+    console.error('カメラ列挙失敗', e);
+  }
+}
+
+function simplifyLabel(label, index){
+  // 広角・望遠・超広角などを抽出
+  if(/ultra|超広角|ultrawide/i.test(label)) return '超広角';
+  if(/tele|望遠/i.test(label))              return '望遠';
+  if(/wide|広角/i.test(label))              return '広角';
+  if(/macro|マクロ/i.test(label))           return 'マクロ';
+  // 番号付きフォールバック
+  return `カメラ${index+1}`;
+}
+
 async function startCamera(id){
   if(streams[id]) return;
   const video = document.getElementById('video'+id);
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:'environment' },
-      audio: false
-    });
+    const constraint = selectedDeviceId
+      ? { video:{ deviceId:{ exact: selectedDeviceId } }, audio:false }
+      : { video:{ facingMode:'environment' }, audio:false };
+    const stream = await navigator.mediaDevices.getUserMedia(constraint);
     streams[id] = stream;
     video.srcObject = stream;
     await video.play();
-    await populateCamSelect(id);
-    // セレクターを現在使用中のデバイスに合わせる
-    const track = stream.getVideoTracks()[0];
-    const deviceId = track.getSettings().deviceId;
-    const sel = document.getElementById('cam-select'+id);
-    if(sel && deviceId) sel.value = deviceId;
   } catch(e){
     showToast('カメラを起動できませんでした');
     console.error(e);
   }
 }
 
-async function populateCamSelect(id){
-  try{
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const cams = devices.filter(d => d.kind === 'videoinput');
-    const sel  = document.getElementById('cam-select'+id);
-    if(!sel) return;
-    sel.innerHTML = '';
-    cams.forEach((cam, i) => {
-      const opt = document.createElement('option');
-      opt.value = cam.deviceId;
-      opt.textContent = cam.label || `カメラ ${i+1}`;
-      sel.appendChild(opt);
-    });
-  } catch(e){ console.warn(e); }
-}
-
-async function switchCamera(id, deviceId){
-  if(!deviceId) return;
-  // 現在のストリームを停止
-  if(streams[id]){ streams[id].getTracks().forEach(t=>t.stop()); delete streams[id]; }
-  const video = document.getElementById('video'+id);
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video:{ deviceId:{ exact: deviceId } },
-      audio: false
-    });
-    streams[id] = stream;
-    video.srcObject = stream;
-    await video.play();
-  } catch(e){
-    showToast('カメラの切り替えに失敗しました');
-    console.error(e);
-  }
+async function switchCamera(stepId, deviceId){
+  selectedDeviceId = deviceId;
+  // もう一方のセレクターも同期
+  const otherId = stepId === 1 ? 'cam-select2' : 'cam-select1';
+  const other = document.getElementById(otherId);
+  if(other) other.value = deviceId;
+  // 現在のストリームを差し替え
+  stopCamera(stepId);
+  await startCamera(stepId);
+  if(stepId === 2) startOverlay();
 }
 
 function stopCamera(id){
@@ -334,10 +385,15 @@ function stopCamera(id){
 function capture(id){
   const video = document.getElementById('video'+id);
   if(!video.videoWidth){ showToast('カメラが起動していません'); return; }
+  const W = window.innerWidth, H = window.innerHeight;
   const c = document.getElementById('snap'+id);
-  c.width  = video.videoWidth;
-  c.height = video.videoHeight;
-  c.getContext('2d').drawImage(video, 0, 0);
+  c.width = W; c.height = H;
+  // videoのobject-fit:coverと同じクリッピングをcanvasで再現
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const scale = Math.max(W / vw, H / vh);
+  const dw = vw * scale, dh = vh * scale;
+  const ox = (W - dw) / 2, oy = (H - dh) / 2;
+  c.getContext('2d').drawImage(video, ox, oy, dw, dh);
   onImageReady(id, c);
 }
 
@@ -346,9 +402,13 @@ function loadFile(id, input){
   if(!file) return;
   const img = new Image();
   img.onload = () => {
+    const W = window.innerWidth, H = window.innerHeight;
     const c = document.getElementById('snap'+id);
-    c.width = img.naturalWidth; c.height = img.naturalHeight;
-    c.getContext('2d').drawImage(img, 0, 0);
+    c.width = W; c.height = H;
+    const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+    const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+    const ox = (W - dw) / 2, oy = (H - dh) / 2;
+    c.getContext('2d').drawImage(img, ox, oy, dw, dh);
     URL.revokeObjectURL(img.src);
     onImageReady(id, c);
   };
@@ -386,15 +446,14 @@ function drawGrid(ctx, W, H){
 // ===============================================================
 let gridRaf1 = null;
 function startGrid1(){
-  const video = document.getElementById('video1');
-  const gc    = document.getElementById('grid-canvas1');
-  const ctx   = gc.getContext('2d');
+  const gc  = document.getElementById('grid-canvas1');
+  const ctx = gc.getContext('2d');
   function draw(){
     if(currentStep !== 1){ gridRaf1 = null; return; }
-    gc.width  = video.offsetWidth  || gc.offsetWidth;
-    gc.height = video.offsetHeight || gc.offsetHeight;
-    ctx.clearRect(0, 0, gc.width, gc.height);
-    drawGrid(ctx, gc.width, gc.height);
+    const W = window.innerWidth, H = window.innerHeight;
+    if(gc.width !== W || gc.height !== H){ gc.width = W; gc.height = H; }
+    ctx.clearRect(0, 0, W, H);
+    drawGrid(ctx, W, H);
     gridRaf1 = requestAnimationFrame(draw);
   }
   if(gridRaf1) cancelAnimationFrame(gridRaf1);
@@ -471,25 +530,24 @@ function buildEdgeCanvas(){
 
 function startOverlay(){
   if(!targetCanvas) return;
-  edgeCache = null; // reset cache when target changes
+  edgeCache = null;
   ovMode = 'image';
   document.getElementById('btn-ov-img').classList.add('active');
   document.getElementById('btn-ov-edge').classList.remove('active');
 
-  const video = document.getElementById('video2');
-  const oc    = document.getElementById('overlay-canvas');
-  const ctx   = oc.getContext('2d');
+  const oc  = document.getElementById('overlay-canvas');
+  const ctx = oc.getContext('2d');
 
   function draw(){
     if(currentStep !== 2){ ovRaf = null; return; }
-    oc.width  = video.offsetWidth  || oc.offsetWidth;
-    oc.height = video.offsetHeight || oc.offsetHeight;
-    ctx.clearRect(0, 0, oc.width, oc.height);
+    const W = window.innerWidth, H = window.innerHeight;
+    if(oc.width !== W || oc.height !== H){ oc.width = W; oc.height = H; }
+    ctx.clearRect(0, 0, W, H);
     const src = (ovMode === 'edge' && edgeCache) ? edgeCache : targetCanvas;
     ctx.globalAlpha = ovOpacity;
-    drawFit(ctx, src, oc.width, oc.height);
+    drawFit(ctx, src, W, H);
     ctx.globalAlpha = 1;
-    drawGrid(ctx, oc.width, oc.height);
+    drawGrid(ctx, W, H);
     ovRaf = requestAnimationFrame(draw);
   }
   if(ovRaf) cancelAnimationFrame(ovRaf);
@@ -499,38 +557,34 @@ function startOverlay(){
 // ===============================================================
 // STEP3: MANUAL ADJUST (pinch / drag / rotate)
 // ===============================================================
+let adjustListenersAdded = false;
 function initAdjust(){
-  // Render target as background
-  const wrap   = document.getElementById('adjust-wrap');
   const tLayer = document.getElementById('target-layer');
   const mLayer = document.getElementById('mine-layer');
 
-  const W = wrap.offsetWidth;
-  const H = wrap.offsetHeight;
+  const W = window.innerWidth;
+  const H = window.innerHeight;
   tLayer.width = mLayer.width  = W;
   tLayer.height = mLayer.height = H;
 
-  // Draw target (fixed, full opacity)
   const tCtx = tLayer.getContext('2d');
   drawFit(tCtx, targetCanvas, W, H);
 
-  // Reset transform to fit mine into the canvas initially
   resetTransform();
 
-  // Touch event listeners
-  mLayer.addEventListener('touchstart',  onTouchStart,  {passive:false});
-  mLayer.addEventListener('touchmove',   onTouchMove,   {passive:false});
-  mLayer.addEventListener('touchend',    onTouchEnd,    {passive:false});
-  mLayer.addEventListener('touchcancel', onTouchEnd,    {passive:false});
-  // Mouse fallback
-  mLayer.addEventListener('mousedown',   onMouseDown);
+  if(!adjustListenersAdded){
+    mLayer.addEventListener('touchstart',  onTouchStart,  {passive:false});
+    mLayer.addEventListener('touchmove',   onTouchMove,   {passive:false});
+    mLayer.addEventListener('touchend',    onTouchEnd,    {passive:false});
+    mLayer.addEventListener('touchcancel', onTouchEnd,    {passive:false});
+    mLayer.addEventListener('mousedown',   onMouseDown);
+    adjustListenersAdded = true;
+  }
 }
 
 function resetTransform(){
-  const wrap = document.getElementById('adjust-wrap');
-  const W = wrap.offsetWidth, H = wrap.offsetHeight;
+  const W = window.innerWidth, H = window.innerHeight;
   T_baseW = W; T_baseH = H;
-  // Fit mine centered — store as pixel coords within current wrap size
   const s = Math.min(W / mineCanvas.width, H / mineCanvas.height);
   T = {
     tx: (W - mineCanvas.width  * s) / 2,
@@ -672,11 +726,9 @@ function restartAnim(){
 
 function drawAnimFrame(){
   const canvas = document.getElementById('compare-canvas');
-  const wrap   = canvas.parentElement;
-  canvas.width  = wrap.offsetWidth;
-  canvas.height = wrap.offsetHeight;
+  const W = window.innerWidth, H = window.innerHeight;
+  if(canvas.width !== W || canvas.height !== H){ canvas.width = W; canvas.height = H; }
   const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
   if(animFrame === 0){
@@ -733,7 +785,15 @@ function showToast(msg){
 // ===============================================================
 // INIT
 // ===============================================================
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+  // ステッパー高さに合わせてバー位置を動的設定
+  const stepperH = document.querySelector('.stepper').offsetHeight;
+  const descBar  = document.getElementById('desc-bar');
+  const floatCtrl = document.querySelector('.float-ctrl');
+  descBar.style.top = stepperH + 'px';
+  if(floatCtrl) floatCtrl.style.top = (stepperH + descBar.offsetHeight + 6) + 'px';
+
+  await populateCameraList();
   startCamera(1);
   startGrid1();
 });
