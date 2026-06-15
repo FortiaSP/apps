@@ -100,6 +100,14 @@ input[type=range]{flex:1;accent-color:var(--accent);max-width:120px}
 /* TOAST */
 .toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--surface2);border:1px solid var(--border);padding:10px 20px;border-radius:var(--radius-sm);font-size:13px;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;z-index:200}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* 微調整ボタン */
+.fine-ctrl{display:flex;align-items:center;gap:6px}
+.fine-ctrl-label{font-size:11px;color:var(--muted);min-width:28px;text-align:right;flex-shrink:0}
+.fine-ctrl-val{font-size:11px;color:var(--text);min-width:52px;text-align:center;flex-shrink:0;background:rgba(255,255,255,.07);border-radius:4px;padding:2px 4px}
+.fine-btn{width:36px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:rgba(255,255,255,.1);color:#fff;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}
+.fine-btn:active{background:rgba(255,255,255,.25)}
+.fine-ctrl-rows{display:flex;flex-direction:column;gap:5px;border-top:1px solid rgba(255,255,255,.1);padding-top:8px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -198,6 +206,32 @@ input[type=range]{flex:1;accent-color:var(--accent);max-width:120px}
       <div class="ctrl-row">
         <span class="ctrl-label">自分の絵の透明度</span>
         <input type="range" id="mine-opacity" min="10" max="100" value="60" oninput="mineOpacity=this.value/100;renderMine()">
+      </div>
+      <div class="fine-ctrl-rows">
+        <div class="fine-ctrl">
+          <span class="fine-ctrl-label">角度</span>
+          <button class="fine-btn" onclick="fineAdjust('angle',-1)">－</button>
+          <span class="fine-ctrl-val" id="fine-val-angle">0.00°</span>
+          <button class="fine-btn" onclick="fineAdjust('angle',+1)">＋</button>
+        </div>
+        <div class="fine-ctrl">
+          <span class="fine-ctrl-label">X</span>
+          <button class="fine-btn" onclick="fineAdjust('tx',-1)">－</button>
+          <span class="fine-ctrl-val" id="fine-val-tx">0px</span>
+          <button class="fine-btn" onclick="fineAdjust('tx',+1)">＋</button>
+        </div>
+        <div class="fine-ctrl">
+          <span class="fine-ctrl-label">Y</span>
+          <button class="fine-btn" onclick="fineAdjust('ty',-1)">－</button>
+          <span class="fine-ctrl-val" id="fine-val-ty">0px</span>
+          <button class="fine-btn" onclick="fineAdjust('ty',+1)">＋</button>
+        </div>
+        <div class="fine-ctrl">
+          <span class="fine-ctrl-label">拡縮</span>
+          <button class="fine-btn" onclick="fineAdjust('scale',-1)">－</button>
+          <span class="fine-ctrl-val" id="fine-val-scale">1.00×</span>
+          <button class="fine-btn" onclick="fineAdjust('scale',+1)">＋</button>
+        </div>
       </div>
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="resetTransform()">リセット</button>
@@ -615,6 +649,27 @@ function renderMine(){
   ctx.drawImage(mineCanvas, T.tx, T.ty, mineCanvas.width * T.scale, mineCanvas.height * T.scale);
   ctx.restore();
   ctx.globalAlpha = 1;
+  updateFineDisplay();
+}
+
+// ---- Fine adjustment buttons ----
+const FINE_STEP = { angle: 0.01 * Math.PI / 180, tx: 1, ty: 1, scale: 0.01 };
+
+function fineAdjust(key, dir){
+  T[key] += FINE_STEP[key] * dir;
+  if(T.scale < 0.01) T.scale = 0.01; // scale下限
+  renderMine();
+}
+
+function updateFineDisplay(){
+  const degEl    = document.getElementById('fine-val-angle');
+  const txEl     = document.getElementById('fine-val-tx');
+  const tyEl     = document.getElementById('fine-val-ty');
+  const scaleEl  = document.getElementById('fine-val-scale');
+  if(degEl)   degEl.textContent   = (T.angle * 180 / Math.PI).toFixed(2) + '°';
+  if(txEl)    txEl.textContent    = Math.round(T.tx) + 'px';
+  if(tyEl)    tyEl.textContent    = Math.round(T.ty) + 'px';
+  if(scaleEl) scaleEl.textContent = T.scale.toFixed(2) + '×';
 }
 
 // ---- Touch gesture state ----
