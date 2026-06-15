@@ -107,7 +107,7 @@ input[type=range]{flex:1;accent-color:var(--accent);max-width:120px}
 .fine-ctrl-val{font-size:11px;color:var(--text);min-width:52px;text-align:center;flex-shrink:0;background:rgba(255,255,255,.07);border-radius:4px;padding:2px 4px}
 .fine-btn{width:36px;height:32px;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:rgba(255,255,255,.1);color:#fff;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1}
 .fine-btn:active{background:rgba(255,255,255,.25)}
-.fine-ctrl-rows{display:flex;flex-direction:column;gap:5px;border-top:1px solid rgba(255,255,255,.1);padding-top:8px;margin-top:2px}
+.fine-ctrl-rows{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;border-top:1px solid rgba(255,255,255,.1);padding-top:8px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -653,7 +653,7 @@ function renderMine(){
 }
 
 // ---- Fine adjustment buttons ----
-const FINE_STEP = { angle: 0.1 * Math.PI / 180, tx: 1, ty: 1, scale: 0.01 };
+const FINE_STEP = { angle: 0.1 * Math.PI / 180, tx: 1, ty: 1, scale: 0.001 };
 
 function fineAdjust(key, dir){
   T[key] += FINE_STEP[key] * dir;
@@ -669,7 +669,7 @@ function updateFineDisplay(){
   if(degEl)   degEl.textContent   = (T.angle * 180 / Math.PI).toFixed(2) + '°';
   if(txEl)    txEl.textContent    = Math.round(T.tx) + 'px';
   if(tyEl)    tyEl.textContent    = Math.round(T.ty) + 'px';
-  if(scaleEl) scaleEl.textContent = T.scale.toFixed(2) + '×';
+  if(scaleEl) scaleEl.textContent = T.scale.toFixed(3) + '×';
 }
 
 // ---- Touch gesture state ----
