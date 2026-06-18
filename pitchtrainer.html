@@ -117,6 +117,16 @@
     <p class="sub">自分で組み立てたフレーズを、毎回ランダムな調で歌ってみましょう。歌った後に、各音のピッチのずれをセント単位で確認できます。</p>
   </header>
 
+  <section class="panel" id="storage-panel">
+    <div class="row" style="margin-bottom:0; align-items:center;">
+      <span id="storage-status" style="font-family:var(--mono-font); font-size:12px; color:var(--text-dim); flex:1;">変更内容はブラウザに自動保存されます。</span>
+      <button type="button" class="btn secondary" id="export-btn">ファイルに書き出す</button>
+      <label class="btn secondary" for="import-file-input" style="margin:0; cursor:pointer;">ファイルから読み込む</label>
+      <input type="file" id="import-file-input" accept="application/json" style="display:none;">
+      <button type="button" class="btn secondary" id="clear-saved-btn">保存データをクリア</button>
+    </div>
+  </section>
+
   <main>
     <section class="panel" id="settings-panel">
       <h2><span class="num">01</span>設定</h2>
@@ -307,6 +317,7 @@
   var practiceMode = 'count'; // 'count'=4カウントで開始 / 'intro'=前奏で開始
   var isRunning = false;
   var revealFirstNote = false;
+  var STORAGE_KEY = 'vocalPitchTrainer.savedState.v1';
 
   var audioCtx = null;
   var micStream = null;
@@ -351,12 +362,14 @@
     if(rangeLowMidi >= rangeHighMidi){ rangeHighMidi = rangeLowMidi+1; highSel.value = rangeHighMidi; }
     mainBuilder.refreshPitchOptions();
     introBuilder.refreshPitchOptions();
+    persistState();
   });
   highSel.addEventListener('change', function(){
     rangeHighMidi = parseInt(highSel.value, 10);
     if(rangeHighMidi <= rangeLowMidi){ rangeLowMidi = rangeHighMidi-1; lowSel.value = rangeLowMidi; }
     mainBuilder.refreshPitchOptions();
     introBuilder.refreshPitchOptions();
+    persistState();
   });
 
   // ---------- セグメントコントロール ----------
@@ -391,9 +404,11 @@
     tempo = parseInt(tempoSlider.value, 10);
     tempoValue.textContent = tempo;
   });
+  tempoSlider.addEventListener('change', function(){ persistState(); });
 
   document.getElementById('reveal-toggle').addEventListener('change', function(e){
     revealFirstNote = e.target.checked;
+    persistState();
   });
 
   // ---------- スタートボタンの有効/無効判定 ----------
@@ -403,7 +418,115 @@
     var hasNote = phrase.some(function(i){ return i.type==='note'; });
     var introOK = practiceMode !== 'intro' || introPhrase.length > 0;
     document.getElementById('start-btn').disabled = isRunning || tb > mb || !hasNote || !introOK;
+    persistState();
   }
+
+  // ---------- 保存・復元（localStorage / ファイル書き出し・読み込み） ----------
+  function setStorageStatus(t){ document.getElementById('storage-status').textContent = t; }
+
+  function buildStateObject(){
+    return {
+      version: 1,
+      rangeLowMidi: rangeLowMidi,
+      rangeHighMidi: rangeHighMidi,
+      timeSig: timeSig,
+      measures: measures,
+      tempo: tempo,
+      revealFirstNote: revealFirstNote,
+      practiceMode: practiceMode,
+      phrase: phrase,
+      introPhrase: introPhrase
+    };
+  }
+
+  function setSegmentedActive(id, val){
+    var el = document.getElementById(id);
+    el.querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('active', b.dataset.val === val);
+    });
+  }
+
+  function applyStateObject(data){
+    if(!data || typeof data !== 'object') return;
+    if(typeof data.rangeLowMidi === 'number') rangeLowMidi = data.rangeLowMidi;
+    if(typeof data.rangeHighMidi === 'number') rangeHighMidi = data.rangeHighMidi;
+    if(data.timeSig===3 || data.timeSig===4) timeSig = data.timeSig;
+    if(data.measures===1 || data.measures===2) measures = data.measures;
+    if(typeof data.tempo === 'number') tempo = Math.min(208, Math.max(40, data.tempo));
+    if(typeof data.revealFirstNote === 'boolean') revealFirstNote = data.revealFirstNote;
+    if(data.practiceMode==='count' || data.practiceMode==='intro') practiceMode = data.practiceMode;
+
+    phrase.length = 0;
+    if(Array.isArray(data.phrase)) data.phrase.forEach(function(it){ phrase.push(it); });
+    introPhrase.length = 0;
+    if(Array.isArray(data.introPhrase)) data.introPhrase.forEach(function(it){ introPhrase.push(it); });
+
+    lowSel.value = rangeLowMidi;
+    highSel.value = rangeHighMidi;
+    mainBuilder.refreshPitchOptions();
+    introBuilder.refreshPitchOptions();
+    mainBuilder.render(); mainBuilder.updateCounter();
+    introBuilder.render(); introBuilder.updateCounter();
+
+    setSegmentedActive('timesig-toggle', String(timeSig));
+    setSegmentedActive('measures-toggle', String(measures));
+    setSegmentedActive('practice-mode-toggle', practiceMode);
+
+    tempoSlider.value = tempo;
+    tempoValue.textContent = tempo;
+    document.getElementById('reveal-toggle').checked = revealFirstNote;
+
+    updateStartButtonState();
+  }
+
+  function persistState(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(buildStateObject())); }catch(e){ /* 保存できない環境では無視 */ }
+  }
+
+  function loadPersistedState(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return false;
+      applyStateObject(JSON.parse(raw));
+      return true;
+    }catch(e){ return false; }
+  }
+
+  document.getElementById('export-btn').addEventListener('click', function(){
+    var blob = new Blob([JSON.stringify(buildStateObject(), null, 2)], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'vocal-pitch-trainer-phrase.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    setStorageStatus('ファイルに書き出しました。');
+  });
+
+  document.getElementById('import-file-input').addEventListener('change', function(e){
+    var file = e.target.files && e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var data = JSON.parse(reader.result);
+        applyStateObject(data);
+        setStorageStatus('ファイルから読み込みました。');
+      }catch(err){
+        alert('ファイルの読み込みに失敗しました。正しいファイル形式か確認してください。');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('clear-saved-btn').addEventListener('click', function(){
+    if(!confirm('ブラウザに保存されている内容を消去します。次回このページを開いたときは復元されません（今編集中の内容はそのまま残ります）。続けますか?')) return;
+    try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+    setStorageStatus('保存データを消去しました。');
+  });
 
   // ---------- フレーズビルダー（本フレーズ／前奏で共用する汎用ロジック） ----------
   function createBuilder(opts){
@@ -906,12 +1029,17 @@
     }).join('');
   }
 
-  // 初期表示
-  mainBuilder.render();
-  mainBuilder.updateCounter();
-  introBuilder.render();
-  introBuilder.updateCounter();
-  updateStartButtonState();
+  // 初期表示（保存データがあれば復元、なければ空の状態で表示）
+  var restored = loadPersistedState();
+  if(!restored){
+    mainBuilder.render();
+    mainBuilder.updateCounter();
+    introBuilder.render();
+    introBuilder.updateCounter();
+    updateStartButtonState();
+  } else {
+    setStorageStatus('前回保存した内容を復元しました。');
+  }
 })();
 </script>
 </body>
