@@ -191,6 +191,16 @@
         </div>
       </div>
       <div class="row" style="margin-bottom:0;">
+        <div class="field" style="flex:1; min-width:220px;">
+          <label for="timbre-select">音色（本フレーズ・前奏の再生に使用）</label>
+          <select id="timbre-select">
+            <option value="sine">サイン波（やわらかい純音）</option>
+            <option value="triangle">トライアングル波</option>
+            <option value="sawtooth">のこぎり波</option>
+            <option value="square">矩形波</option>
+            <option value="warm">倍音を重ねた音（ウォーム）</option>
+          </select>
+        </div>
         <div class="field">
           <label style="display:flex; align-items:center; gap:6px; flex-direction:row;"><input type="checkbox" id="reveal-toggle"> 実行中に音名を表示する</label>
         </div>
@@ -335,6 +345,7 @@
     eighth:    {base:'8分',  beats:0.5},
     sixteenth: {base:'16分', beats:0.25}
   };
+  var TIMBRE_VALUES = ['sine','triangle','sawtooth','square','warm'];
 
   // ---------- 状態 ----------
   var rangeLowMidi = 55;  // G3
@@ -347,6 +358,7 @@
   var practiceMode = 'count'; // 'count'=4カウントで開始 / 'intro'=前奏で開始
   var isRunning = false;
   var revealFirstNote = false;
+  var timbre = 'sine'; // 'sine'|'triangle'|'sawtooth'|'square'|'warm'（本フレーズ・前奏の再生音色。クリック音には適用しない）
   var STORAGE_KEY = 'vocalPitchTrainer.savedState.v1';
 
   var audioCtx = null;
@@ -441,6 +453,12 @@
     persistState();
   });
 
+  var timbreSelect = document.getElementById('timbre-select');
+  timbreSelect.addEventListener('change', function(){
+    timbre = timbreSelect.value;
+    persistState();
+  });
+
   // ---------- スタートボタンの有効/無効判定 ----------
   function updateStartButtonState(){
     var tb = totalBeats();
@@ -464,6 +482,7 @@
       tempo: tempo,
       revealFirstNote: revealFirstNote,
       practiceMode: practiceMode,
+      timbre: timbre,
       phrase: phrase,
       introPhrase: introPhrase
     };
@@ -485,6 +504,7 @@
     if(typeof data.tempo === 'number') tempo = Math.min(208, Math.max(40, data.tempo));
     if(typeof data.revealFirstNote === 'boolean') revealFirstNote = data.revealFirstNote;
     if(data.practiceMode==='count' || data.practiceMode==='intro') practiceMode = data.practiceMode;
+    if(TIMBRE_VALUES.indexOf(data.timbre) >= 0) timbre = data.timbre;
 
     phrase.length = 0;
     if(Array.isArray(data.phrase)) data.phrase.forEach(function(it){ phrase.push(it); });
@@ -505,6 +525,7 @@
     tempoSlider.value = tempo;
     tempoValue.textContent = tempo;
     document.getElementById('reveal-toggle').checked = revealFirstNote;
+    timbreSelect.value = timbre;
 
     updateStartButtonState();
   }
@@ -823,11 +844,30 @@
     if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     return audioCtx;
   }
+  // 'warm'用のPeriodicWave（倍音を重ねた柔らかい音色）。AudioContextは1個しか生成しない設計のためキャッシュで足りる。
+  var warmWave = null;
+  function getWarmWave(ctx){
+    if(!warmWave){
+      var amps = [0, 1, 0.5, 0.32, 0.18, 0.11, 0.06, 0.03, 0.015]; // index0=DC(常に0), index1以降=各倍音の振幅
+      var real = new Float32Array(amps.length);
+      var imag = new Float32Array(amps);
+      warmWave = ctx.createPeriodicWave(real, imag, {disableNormalization:false});
+    }
+    return warmWave;
+  }
+  // 本フレーズ・前奏の再生音色を osc に適用する（クリック音(playClick)には適用しない）
+  function applyTimbre(osc, ctx){
+    if(timbre === 'warm'){
+      osc.setPeriodicWave(getWarmWave(ctx));
+    } else {
+      osc.type = (TIMBRE_VALUES.indexOf(timbre) >= 0) ? timbre : 'sine';
+    }
+  }
   function playTone(freq, atTime, dur){
     var ctx = ensureAudioCtx();
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
-    osc.type = 'sine';
+    applyTimbre(osc, ctx);
     osc.frequency.setValueAtTime(freq, atTime);
     gain.gain.setValueAtTime(0.0001, atTime);
     gain.gain.exponentialRampToValueAtTime(0.3, atTime+0.03);
