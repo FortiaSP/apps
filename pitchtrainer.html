@@ -47,6 +47,8 @@
   .field label{font-size:12px; color:var(--text-dim); letter-spacing:.02em;}
   select{background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:4px; padding:8px 10px; font-family:var(--mono-font); font-size:14px;}
   select:disabled{opacity:.45;}
+  input[type=text]{background:var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:4px; padding:8px 10px; font-family:var(--mono-font); font-size:14px;}
+  input[type=text]:disabled{opacity:.45;}
 
   .segmented{display:inline-flex; border:1px solid var(--border); border-radius:4px; overflow:hidden;}
   .segmented button{background:var(--panel-2); border:none; color:var(--text-dim); padding:8px 14px; font-family:var(--body-font); font-size:13px; cursor:pointer;}
@@ -119,12 +121,40 @@
 
   <section class="panel" id="storage-panel">
     <div class="row" style="margin-bottom:0; align-items:center;">
-      <span id="storage-status" style="font-family:var(--mono-font); font-size:12px; color:var(--text-dim); flex:1;">変更内容はブラウザに自動保存されます。</span>
-      <button type="button" class="btn secondary" id="export-btn">ファイルに書き出す</button>
+      <span id="storage-status" style="font-family:var(--mono-font); font-size:12px; color:var(--text-dim); flex:1;">「現在編集中の内容」はブラウザに自動保存されます。</span>
+      <button type="button" class="btn secondary" id="export-btn">現在の内容を書き出す</button>
       <label class="btn secondary" for="import-file-input" style="margin:0; cursor:pointer;">ファイルから読み込む</label>
       <input type="file" id="import-file-input" accept="application/json" style="display:none;">
-      <button type="button" class="btn secondary" id="clear-saved-btn">保存データをクリア</button>
+      <button type="button" class="btn secondary" id="clear-saved-btn">自動保存をクリア</button>
     </div>
+  </section>
+
+  <section class="panel" id="preset-panel">
+    <h2 style="font-size:16px;">プリセット <span style="font-size:12px; color:var(--text-dim); font-weight:400;">(本フレーズ+前奏+設定を名前を付けて複数保存)</span></h2>
+    <div class="row">
+      <div class="field" style="flex:1; min-width:160px;">
+        <label for="preset-name-input">プリセット名</label>
+        <input type="text" id="preset-name-input" placeholder="例: 朝練A">
+      </div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn" id="preset-save-btn">保存</button></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1; min-width:160px;">
+        <label for="preset-select">保存済みプリセット</label>
+        <select id="preset-select"><option value="">(なし)</option></select>
+      </div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="preset-load-btn">読み込む</button></div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="preset-delete-btn">削除</button></div>
+    </div>
+    <div class="row" style="margin-bottom:4px;">
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn secondary" id="preset-export-all-btn">プリセット一覧を書き出す</button></div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <label class="btn secondary" for="preset-import-all-input" style="margin:0; cursor:pointer;">プリセット一覧を読み込む</label>
+        <input type="file" id="preset-import-all-input" accept="application/json" style="display:none;">
+      </div>
+    </div>
+    <div id="preset-status" style="font-family:var(--mono-font); font-size:12px; color:var(--text-dim); min-height:14px;"></div>
   </section>
 
   <main>
@@ -523,9 +553,124 @@
   });
 
   document.getElementById('clear-saved-btn').addEventListener('click', function(){
-    if(!confirm('ブラウザに保存されている内容を消去します。次回このページを開いたときは復元されません（今編集中の内容はそのまま残ります）。続けますか?')) return;
+    if(!confirm('ブラウザに自動保存されている「現在編集中の内容」だけを消去します（保存済みのプリセットは消えません）。次回このページを開いたときは復元されません。続けますか?')) return;
     try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
-    setStorageStatus('保存データを消去しました。');
+    setStorageStatus('自動保存データを消去しました。');
+  });
+
+  // ---------- プリセット（名前付き複数保存） ----------
+  var PRESETS_KEY = 'vocalPitchTrainer.presets.v1';
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function loadPresetsLibrary(){
+    try{
+      var raw = localStorage.getItem(PRESETS_KEY);
+      if(!raw) return {};
+      var obj = JSON.parse(raw);
+      return (obj && typeof obj === 'object') ? obj : {};
+    }catch(e){ return {}; }
+  }
+  function savePresetsLibrary(lib){
+    try{ localStorage.setItem(PRESETS_KEY, JSON.stringify(lib)); }catch(e){}
+  }
+  function setPresetStatus(t){ document.getElementById('preset-status').textContent = t; }
+  function refreshPresetSelect(selectedName){
+    var lib = loadPresetsLibrary();
+    var names = Object.keys(lib);
+    var sel = document.getElementById('preset-select');
+    var h = '<option value="">(なし)</option>';
+    names.forEach(function(name){
+      h += '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
+    });
+    sel.innerHTML = h;
+    if(selectedName && names.indexOf(selectedName) !== -1){ sel.value = selectedName; }
+  }
+
+  document.getElementById('preset-save-btn').addEventListener('click', function(){
+    var name = document.getElementById('preset-name-input').value.trim();
+    if(!name){ alert('プリセット名を入力してください。'); return; }
+    var lib = loadPresetsLibrary();
+    if(Object.prototype.hasOwnProperty.call(lib, name)){
+      if(!confirm('「' + name + '」は既に存在します。上書きしますか?')) return;
+    }
+    lib[name] = buildStateObject();
+    savePresetsLibrary(lib);
+    refreshPresetSelect(name);
+    setPresetStatus('プリセット「' + name + '」を保存しました。');
+  });
+
+  document.getElementById('preset-load-btn').addEventListener('click', function(){
+    var name = document.getElementById('preset-select').value;
+    if(!name){ alert('読み込むプリセットを選択してください。'); return; }
+    var lib = loadPresetsLibrary();
+    if(!Object.prototype.hasOwnProperty.call(lib, name)){ alert('そのプリセットが見つかりません。'); return; }
+    applyStateObject(lib[name]);
+    document.getElementById('preset-name-input').value = name;
+    setPresetStatus('プリセット「' + name + '」を読み込みました。');
+  });
+
+  document.getElementById('preset-delete-btn').addEventListener('click', function(){
+    var name = document.getElementById('preset-select').value;
+    if(!name){ alert('削除するプリセットを選択してください。'); return; }
+    if(!confirm('プリセット「' + name + '」を削除します。よろしいですか?')) return;
+    var lib = loadPresetsLibrary();
+    delete lib[name];
+    savePresetsLibrary(lib);
+    refreshPresetSelect();
+    if(document.getElementById('preset-name-input').value === name){
+      document.getElementById('preset-name-input').value = '';
+    }
+    setPresetStatus('プリセット「' + name + '」を削除しました。');
+  });
+
+  document.getElementById('preset-export-all-btn').addEventListener('click', function(){
+    var lib = loadPresetsLibrary();
+    var payload = {version:1, presets:lib};
+    var blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'vocal-pitch-trainer-presets.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    setPresetStatus('プリセット一覧を書き出しました。');
+  });
+
+  document.getElementById('preset-import-all-input').addEventListener('change', function(e){
+    var file = e.target.files && e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var data = JSON.parse(reader.result);
+        if(!data || typeof data.presets !== 'object'){
+          alert('プリセット一覧ファイルとして認識できませんでした。');
+          return;
+        }
+        var incoming = data.presets;
+        var lib = loadPresetsLibrary();
+        var incomingNames = Object.keys(incoming);
+        var conflicts = incomingNames.filter(function(n){ return Object.prototype.hasOwnProperty.call(lib, n); });
+        if(conflicts.length > 0){
+          var msg = incomingNames.length + '件読み込みます。そのうち' + conflicts.length + '件（' + conflicts.join('、') + '）は既存のプリセットと同名のため上書きされます。続けますか?';
+          if(!confirm(msg)) return;
+        }
+        incomingNames.forEach(function(n){ lib[n] = incoming[n]; });
+        savePresetsLibrary(lib);
+        refreshPresetSelect();
+        setPresetStatus(incomingNames.length + '件のプリセットを読み込みました。');
+      }catch(err){
+        alert('ファイルの読み込みに失敗しました。正しいファイル形式か確認してください。');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   });
 
   // ---------- フレーズビルダー（本フレーズ／前奏で共用する汎用ロジック） ----------
@@ -767,9 +912,15 @@
       '#settings-panel select, #settings-panel input, #settings-panel button,' +
       '#builder-panel select, #builder-panel input, #builder-panel button,' +
       '#intro-builder-panel select, #intro-builder-panel input, #intro-builder-panel button,' +
-      '#practice-mode-toggle button'
+      '#practice-mode-toggle button,' +
+      '#storage-panel select, #storage-panel input, #storage-panel button,' +
+      '#preset-panel select, #preset-panel input, #preset-panel button'
     );
     els.forEach(function(el){ el.disabled = lock; });
+    document.querySelectorAll('#storage-panel label[for], #preset-panel label[for]').forEach(function(el){
+      el.style.pointerEvents = lock ? 'none' : '';
+      el.style.opacity = lock ? '.4' : '';
+    });
     updateStartButtonState();
   }
 
@@ -1030,6 +1181,7 @@
   }
 
   // 初期表示（保存データがあれば復元、なければ空の状態で表示）
+  refreshPresetSelect();
   var restored = loadPersistedState();
   if(!restored){
     mainBuilder.render();
