@@ -227,8 +227,11 @@
             <option value="whole">全音符</option>
             <option value="half">2分音符</option>
             <option value="quarter" selected>4分音符</option>
+            <option value="dottedQuarter">付点4分音符</option>
             <option value="eighth">8分音符</option>
+            <option value="dottedEighth">付点8分音符</option>
             <option value="sixteenth">16分音符</option>
+            <option value="dottedSixteenth">付点16分音符</option>
           </select>
         </div>
         <div class="field"><label>&nbsp;</label><button type="button" class="btn" id="add-item-btn">追加</button></div>
@@ -260,8 +263,11 @@
             <option value="whole">全音符</option>
             <option value="half">2分音符</option>
             <option value="quarter" selected>4分音符</option>
+            <option value="dottedQuarter">付点4分音符</option>
             <option value="eighth">8分音符</option>
+            <option value="dottedEighth">付点8分音符</option>
             <option value="sixteenth">16分音符</option>
+            <option value="dottedSixteenth">付点16分音符</option>
           </select>
         </div>
         <div class="field"><label>&nbsp;</label><button type="button" class="btn" id="intro-add-item-btn">追加</button></div>
@@ -343,7 +349,10 @@
     half:      {base:'2分',  beats:2},
     quarter:   {base:'4分',  beats:1},
     eighth:    {base:'8分',  beats:0.5},
-    sixteenth: {base:'16分', beats:0.25}
+    sixteenth: {base:'16分', beats:0.25},
+    dottedQuarter:   {base:'付点4分',  beats:1.5},
+    dottedEighth:    {base:'付点8分',  beats:0.75},
+    dottedSixteenth: {base:'付点16分', beats:0.375}
   };
   var TIMBRE_VALUES = ['sine','triangle','sawtooth','square','warm'];
 
