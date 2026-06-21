@@ -925,51 +925,6 @@
     if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     return audioCtx;
   }
-
-  // ---------- iOSの音量経路対策（無音オーディオを常時再生してメディア音量に固定する） ----------
-  // iOS Safariは、マイクを使っていない状態でのWeb Audio再生を着信/通知音量に近い経路で
-  // 出すことがあり、これが「試聴ボタンだけ音が小さい」という現象の原因と推測される。
-  // <audio>要素で無音音声をループ再生し続けることで、ページのオーディオセッションを
-  // メディア再生用の経路に固定しようとする対策（効果は端末・iOSバージョン依存で保証はない）。
-  var silentAudioEl = null;
-  function buildSilentWavBlob(durationSec, sampleRate){
-    sampleRate = sampleRate || 8000;
-    var numSamples = Math.max(1, Math.floor(durationSec * sampleRate));
-    var blockAlign = 2; // 16bit・モノラル
-    var dataSize = numSamples * blockAlign;
-    var buffer = new ArrayBuffer(44 + dataSize); // データ部はArrayBufferの初期値0=無音のまま
-    var view = new DataView(buffer);
-    function writeString(offset, str){
-      for(var i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i));
-    }
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * blockAlign, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, 16, true);
-    writeString(36, 'data');
-    view.setUint32(40, dataSize, true);
-    return new Blob([buffer], {type:'audio/wav'});
-  }
-  function primeMediaAudioSession(){
-    if(silentAudioEl) return;
-    try{
-      var url = URL.createObjectURL(buildSilentWavBlob(1, 8000));
-      silentAudioEl = document.createElement('audio');
-      silentAudioEl.src = url;
-      silentAudioEl.loop = true;
-      silentAudioEl.volume = 0.01; // 完全な0だと一部環境で「再生中」と判定されない場合があるための保険
-      silentAudioEl.play().catch(function(){ /* 自動再生が拒否されても他機能には影響しない */ });
-    }catch(e){ /* 失敗しても無視（既存機能には影響しない） */ }
-  }
-  document.addEventListener('pointerdown', primeMediaAudioSession, {once:true, passive:true});
-  document.addEventListener('touchstart', primeMediaAudioSession, {once:true, passive:true});
   // 'warm'用のPeriodicWave（倍音を重ねた柔らかい音色）。AudioContextは1個しか生成しない設計のためキャッシュで足りる。
   var warmWave = null;
   function getWarmWave(ctx){
