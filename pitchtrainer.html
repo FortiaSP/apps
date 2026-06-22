@@ -1132,11 +1132,14 @@
 
       if(practiceMode === 'intro'){
         // 前奏モード: 最初の音の提示は省略するが、前奏の前に4カウントを入れる
-        await runCountIn();
+        var countInEnd = await runCountIn();
 
         setPhase('intro');
         renderIntroPracticeStrip();
-        var introStart = ctx.currentTime + 0.05;
+        // runCountIn()の戻り値(4カウント終了の予定時刻)をそのまま使う。
+        // ctx.currentTimeをここで取り直すと、wait()のsetTimeoutが遅れて解決した分だけ
+        // 余計な空白(タイミングのズレ)が生まれてしまうため。
+        var introStart = Math.max(countInEnd, ctx.currentTime + 0.005);
         var introBeatsTotal = introPhrase.reduce(function(s,i){ return s+i.durBeats; }, 0);
         var introDur = scheduleArrPlayback(introPhrase, shift, introStart, secPerBeat);
         if(countDuringPractice) scheduleClickTrack(introStart, introBeatsTotal, secPerBeat);
