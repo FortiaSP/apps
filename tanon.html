@@ -536,7 +536,7 @@
       if(ctx.state === 'suspended'){ try{ await ctx.resume(); }catch(e){} }
 
       try{
-        micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false}});
+        micStream = await navigator.mediaDevices.getUserMedia({audio:true});
       }catch(e){
         setStatus('マイクの使用が許可されませんでした。ブラウザの設定をご確認ください。');
         isRunning = false;
