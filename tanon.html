@@ -112,7 +112,7 @@
   <header class="hero">
     <p class="eyebrow">Ear training / single-pitch imitation</p>
     <h1>単音模倣トレーナー</h1>
-    <p class="sub">端末がランダムに鳴らす単音を聞いて、すぐに同じ高さで歌います。ピッチのずれに応じて4段階のフィードバック音が鳴り、テンポに乗ったまま次の課題へ進みます。</p>
+    <p class="sub">端末がランダムに鳴らす単音を聞いて、すぐに同じ高さで歌います。テンポに乗ったまま次の課題へ進み、判定結果はその場で表示されます。</p>
   </header>
 
   <main>
@@ -135,7 +135,7 @@
       <div class="row">
         <div class="field" style="flex:1; min-width:220px;">
           <label for="tempo-slider">テンポ: <span id="tempo-value">76</span> BPM（1課題=4拍）</label>
-          <input type="range" id="tempo-slider" min="40" max="85" value="76" step="1">
+          <input type="range" id="tempo-slider" min="40" max="120" value="76" step="1">
         </div>
         <div class="field" style="flex:1; min-width:220px;">
           <label for="timbre-select">出題音の音色</label>
@@ -193,7 +193,7 @@
     </section>
 
     <footer class="note">
-      判定基準：±30¢以内→正解音／30〜50¢→正解音から半オクターブ（トライトーン）下／50〜100¢→正解音から1オクターブ下／100¢超または無音→不協和ノイズ。出題音終了から150ms後に録音を0.5秒間行い、先頭100msを除いた区間のメディアン値で判定します。フィードバック音は次拍の頭（最低50ms後）で再生されます。テンポは最大85BPMまでです（録音0.5秒+余白+安全マージンが1拍に収まる上限のため）。<br>
+      判定基準：±30¢以内→正解／30〜50¢→近い／50〜100¢→ずれ大／100¢超または無音→検出不可。出題音終了から150ms後に録音を0.5秒間行い、先頭100msを除いた区間のメディアン値で判定します。判定結果は判定後すぐに表示されます。テンポは最大120BPMまでです。<br>
       ピッチ検出は自己相関法（<code>autoCorrelate</code>）を使用しています。マイク環境やデバイスによって検出精度が変わることがあります。
     </footer>
   </main>
@@ -337,39 +337,6 @@
     osc.start(atTime); osc.stop(atTime+dur+0.02);
   }
 
-  // フィードバック音：正解音は常にやわらかいサイン系（'warm'固定）で、半音シフトのみ変える
-  function playFeedbackTone(freq, atTime, dur){
-    var ctx = ensureAudioCtx();
-    var osc = ctx.createOscillator();
-    var gain = ctx.createGain();
-    osc.setPeriodicWave(getWarmWave(ctx));
-    osc.frequency.setValueAtTime(freq, atTime);
-    gain.gain.setValueAtTime(0.0001, atTime);
-    gain.gain.exponentialRampToValueAtTime(0.28, atTime+0.025);
-    gain.gain.setValueAtTime(0.28, atTime + Math.max(0.04, dur-0.1));
-    gain.gain.exponentialRampToValueAtTime(0.0001, atTime+dur);
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(atTime); osc.stop(atTime+dur+0.02);
-  }
-
-  // ブザー的な不協和ノイズ（2つの近接した矩形波を同時に鳴らす）
-  function playBuzzNoise(atTime, dur){
-    var ctx = ensureAudioCtx();
-    var freqs = [220, 233]; // 短2度でビートさせる
-    freqs.forEach(function(f){
-      var osc = ctx.createOscillator();
-      var gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(f, atTime);
-      gain.gain.setValueAtTime(0.0001, atTime);
-      gain.gain.exponentialRampToValueAtTime(0.18, atTime+0.015);
-      gain.gain.setValueAtTime(0.18, atTime + Math.max(0.03, dur-0.08));
-      gain.gain.exponentialRampToValueAtTime(0.0001, atTime+dur);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(atTime); osc.stop(atTime+dur+0.02);
-    });
-  }
-
   function wait(sec){ return new Promise(function(r){ setTimeout(r, Math.max(0,sec)*1000); }); }
 
   // ---------- ピッチ検出（自己相関法） ----------
@@ -460,22 +427,11 @@
       else bucket = 'bad';
     }
 
-    // Beat2: フィードバック音（次拍の頭、最低50ms後を保証）
-    var beat2Start = taskStartCtx + secPerBeat*2;
-    var fbAt = Math.max(beat2Start, ctx.currentTime + 0.05);
-    var fbDur = secPerBeat * 0.7;
-    if(bucket === 'good'){
-      playFeedbackTone(midiToFreq(targetMidi), fbAt, fbDur);
-    } else if(bucket === 'warn30'){
-      playFeedbackTone(midiToFreq(targetMidi - 6), fbAt, fbDur);
-    } else if(bucket === 'warn50'){
-      playFeedbackTone(midiToFreq(targetMidi - 12), fbAt, fbDur);
-    } else {
-      playBuzzNoise(fbAt, fbDur);
-    }
+    // 判定結果をその場で表示
     setStageUI('feedback', null, bucket, cents);
+    updateLastResultUI({targetMidi: targetMidi, cents: cents===null?null:Math.round(cents), bucket: bucket});
 
-    // Beat3: 余白 → 次の課題へ
+    // Beat2〜3: 余白 → 次の課題へ
     var taskEndCtx = taskStartCtx + secPerBeat*4;
     await wait(taskEndCtx - ctx.currentTime);
 
@@ -520,7 +476,7 @@
     if(!r){ el.innerHTML = '&nbsp;'; return; }
     var centsClass = r.bucket === 'good' ? 'good' : (r.bucket === 'warn30' ? 'warn' : 'bad');
     var centsText = r.cents === null ? '検出不可' : ((r.cents>0?'+':'')+r.cents+'¢');
-    el.innerHTML = '直前: ' + noteNameFromMidi(r.targetMidi) + ' → 誤差 <span class="cents ' + centsClass + '">' + centsText + '</span>';
+    el.innerHTML = '結果: ' + noteNameFromMidi(r.targetMidi) + ' → 誤差 <span class="cents ' + centsClass + '">' + centsText + '</span>';
   }
 
   // ---------- メインループ ----------
@@ -531,6 +487,7 @@
       taskResults = [];
       lastTargetMidi = null;
       setStatus('');
+      updateLastResultUI(null);
 
       var ctx = ensureAudioCtx();
       if(ctx.state === 'suspended'){ try{ await ctx.resume(); }catch(e){} }
@@ -567,7 +524,6 @@
         var result = await runOneTask(targetMidi, useTimbre, secPerBeat, taskStartCtx);
         taskResults.push(result);
         updateProgressUI(i+1, taskCount, taskResults);
-        updateLastResultUI(result);
       }
 
       sampling = false;
