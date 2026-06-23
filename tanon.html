@@ -167,7 +167,7 @@
 
       <div class="phase" data-phase="running" hidden>
         <div class="stage">
-          <div class="progress">課題 <span id="stage-idx">1</span> / <span id="stage-total">20</span>　正解率(±30¢) <span class="acc" id="stage-acc">—</span></div>
+          <div class="progress">課題 <span id="stage-idx">1</span> / <span id="stage-total">20</span>　正解率(±30¢・オクターブ可) <span class="acc" id="stage-acc">—</span></div>
           <div class="stage-icon" id="stage-icon"><span style="color:var(--text-dim);">♪</span></div>
           <div class="stage-label" id="stage-label">出題音を再生中…</div>
           <div class="stage-sub" id="stage-sub">&nbsp;</div>
@@ -193,7 +193,7 @@
     </section>
 
     <footer class="note">
-      判定基準：±30¢以内→正解／30〜50¢→近い／50〜100¢→ずれ大／100¢超または無音→検出不可。出題音終了から150ms後に録音を0.5秒間行い、先頭100msを除いた区間のメディアン値で判定します。判定結果は判定後すぐに表示されます。テンポは最大120BPMまでです。<br>
+      判定基準：音名（ピッチクラス）を基準に、オクターブ違いは補正したうえで誤差を算出します（オクターブが違っても±30¢以内なら正解扱いで「オクターブ上／下」と表示）。±30¢以内→正解／30〜50¢→近い／50〜100¢→ずれ大／100¢超または無音→検出不可。出題音終了から150ms後に録音を0.5秒間行い、先頭100msを除いた区間のメディアン値で判定します。判定結果は判定後すぐに表示されます。テンポは最大120BPMまでです。<br>
       ピッチ検出は自己相関法（<code>autoCorrelate</code>）を使用しています。マイク環境やデバイスによって検出精度が変わることがあります。
     </footer>
   </main>
@@ -414,12 +414,16 @@
     sampling = false;
 
     // 判定（先頭100msを除いた区間のメディアン）
+    // オクターブ違いは音名（ピッチクラス）が合っていれば正解として扱う：
+    // 検出周波数を最も近いオクターブに補正したうえでセント誤差を算出する
     var validSamples = pitchSamples.filter(function(s){ return s.t >= 0.1; }).map(function(s){ return s.f; }).sort(function(a,b){ return a-b; });
-    var detected = null, cents = null, bucket = 'undetected';
+    var detected = null, cents = null, bucket = 'undetected', octaveShift = 0;
     if(validSamples.length > 0){
       detected = validSamples[Math.floor(validSamples.length/2)];
       var expected = midiToFreq(targetMidi);
-      cents = 1200 * log2(detected/expected);
+      var rawCents = 1200 * log2(detected/expected);
+      octaveShift = Math.round(rawCents/1200); // 何オクターブ分ずれていたか（+:上／-:下）
+      cents = rawCents - 1200*octaveShift; // オクターブを揃えた後の誤差
       var absCents = Math.abs(cents);
       if(absCents <= 30) bucket = 'good';
       else if(absCents <= 50) bucket = 'warn30';
@@ -428,17 +432,17 @@
     }
 
     // 判定結果をその場で表示
-    setStageUI('feedback', null, bucket, cents);
-    updateLastResultUI({targetMidi: targetMidi, cents: cents===null?null:Math.round(cents), bucket: bucket});
+    setStageUI('feedback', null, bucket, cents, octaveShift);
+    updateLastResultUI({targetMidi: targetMidi, cents: cents===null?null:Math.round(cents), bucket: bucket, octaveShift: octaveShift});
 
     // Beat2〜3: 余白 → 次の課題へ
     var taskEndCtx = taskStartCtx + secPerBeat*4;
     await wait(taskEndCtx - ctx.currentTime);
 
-    return {targetMidi: targetMidi, detected: detected, cents: cents===null?null:Math.round(cents), bucket: bucket};
+    return {targetMidi: targetMidi, detected: detected, cents: cents===null?null:Math.round(cents), bucket: bucket, octaveShift: octaveShift};
   }
 
-  function setStageUI(stage, noteLabel, bucket, cents){
+  function setStageUI(stage, noteLabel, bucket, cents, octaveShift){
     var icon = document.getElementById('stage-icon');
     var label = document.getElementById('stage-label');
     var sub = document.getElementById('stage-sub');
@@ -455,12 +459,21 @@
       label.textContent = '歌ってください';
       sub.textContent = '同じ高さの声で…';
     } else if(stage === 'feedback'){
+      var octaveLabel = octaveTextLabel(octaveShift); // 例: '（1オクターブ上）'
       icon.innerHTML = bucket === 'good' ? '◎' : (bucket === 'bad' || bucket === 'undetected' ? '×' : '△');
-      label.textContent = bucket === 'good' ? '正解！' : (bucket === 'undetected' ? '声を検出できませんでした' : (bucket === 'bad' ? 'ずれが大きい' : '近いです'));
+      label.textContent = (bucket === 'good' ? '正解！' : (bucket === 'undetected' ? '声を検出できませんでした' : (bucket === 'bad' ? 'ずれが大きい' : '近いです'))) + octaveLabel;
       var centsClass = bucket === 'good' ? 'good' : (bucket === 'warn30' ? 'warn' : 'bad');
       var centsText = cents === null ? '検出不可' : ((cents>0?'+':'')+cents+'¢');
       sub.innerHTML = cents === null ? '\u00a0' : ('誤差 <span class="cents ' + centsClass + '">' + centsText + '</span>');
     }
+  }
+
+  // オクターブずれ量からラベル文字列を生成（0の場合は空文字）
+  function octaveTextLabel(octaveShift){
+    if(!octaveShift) return '';
+    var n = Math.abs(octaveShift);
+    var dir = octaveShift > 0 ? '上' : '下';
+    return '（' + (n>1 ? n+'' : '') + 'オクターブ' + dir + '）';
   }
 
   function updateProgressUI(idx, total, results){
@@ -476,7 +489,8 @@
     if(!r){ el.innerHTML = '&nbsp;'; return; }
     var centsClass = r.bucket === 'good' ? 'good' : (r.bucket === 'warn30' ? 'warn' : 'bad');
     var centsText = r.cents === null ? '検出不可' : ((r.cents>0?'+':'')+r.cents+'¢');
-    el.innerHTML = '結果: ' + noteNameFromMidi(r.targetMidi) + ' → 誤差 <span class="cents ' + centsClass + '">' + centsText + '</span>';
+    var octaveLabel = octaveTextLabel(r.octaveShift);
+    el.innerHTML = '結果: ' + noteNameFromMidi(r.targetMidi) + ' → 誤差 <span class="cents ' + centsClass + '">' + centsText + '</span>' + (octaveLabel ? ' <span style="color:var(--text-dim);">' + octaveLabel + '</span>' : '');
   }
 
   // ---------- メインループ ----------
@@ -559,7 +573,7 @@
 
     var summary = document.getElementById('result-summary');
     summary.innerHTML =
-      '<div class="stat"><div class="big">' + Math.round(100*goodCount/taskResults.length) + '%</div><div class="label">正解率(±30¢)</div></div>' +
+      '<div class="stat"><div class="big">' + Math.round(100*goodCount/taskResults.length) + '%</div><div class="label">正解率(±30¢・オクターブ可)</div></div>' +
       '<div class="stat"><div class="big">' + (avgAbsCents!==null ? Math.round(avgAbsCents) : '—') + '¢</div><div class="label">平均誤差(絶対値)</div></div>' +
       '<div class="stat"><div class="big">' + taskResults.length + '</div><div class="label">課題数</div></div>' +
       '<div class="stat"><div class="big">' + undetectedCount + '</div><div class="label">検出できなかった回数</div></div>';
@@ -673,11 +687,13 @@
       var centsText = r.cents===null ? '—' : ((r.cents>0?'+':'')+r.cents+'¢');
       var centsColor = r.cents===null ? 'var(--text-dim)' : (r.bucket==='good' ? 'var(--good)' : (r.bucket==='warn30' ? 'var(--warn)' : 'var(--bad)'));
       var nameLabel = revealNames ? noteNameFromMidi(r.targetMidi) : ('#' + (i+1));
+      var octaveText = r.octaveShift ? ((r.octaveShift>0?'8va↑':'8va↓') + (Math.abs(r.octaveShift)>1 ? '×'+Math.abs(r.octaveShift) : '')) : '';
       return '' +
         '<div class="band-row">' +
           '<div class="range-label">' + nameLabel + '</div>' +
           '<div class="n">' + (r.detected ? r.detected.toFixed(1)+'Hz' : '検出不可') + '</div>' +
           '<div class="bias" style="color:' + centsColor + '; width:60px;">' + centsText + '</div>' +
+          '<div style="width:48px; font-family:var(--mono-font); font-size:11px; color:var(--text-dim); text-align:right;">' + octaveText + '</div>' +
         '</div>';
     }).join('');
   }
