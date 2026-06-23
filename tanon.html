@@ -193,7 +193,7 @@
     </section>
 
     <footer class="note">
-      判定基準：音名（ピッチクラス）を基準に、オクターブ違いは補正したうえで誤差を算出します（オクターブが違っても±30¢以内なら正解扱いで「オクターブ上／下」と表示）。±30¢以内→正解／30〜50¢→近い／50〜100¢→ずれ大／100¢超または無音→検出不可。出題音終了から150ms後に録音を0.5秒間行い、先頭100msを除いた区間のメディアン値で判定します。判定結果は判定後すぐに表示されます。テンポは最大120BPMまでです。<br>
+      判定基準：音名（ピッチクラス）を基準に、オクターブ違いは補正したうえで誤差を算出します（オクターブが違っても±30¢以内なら正解扱いで「オクターブ上／下」と表示）。±30¢以内→正解／30〜50¢→近い／50〜100¢→ずれ大／100¢超または無音→検出不可。出題音終了から150ms後に録音を開始し、テンポに応じて最大限の時間（最小0.3秒、最大1拍分−250ms）を確保します。先頭の安定待機時間（最小100ms または 全体の20%）を除いた区間のメディアン値で判定します。判定結果は判定後すぐに表示されます。テンポは40〜120BPMです。<br>
       ピッチ検出は自己相関法（<code>autoCorrelate</code>）を使用しています。マイク環境やデバイスによって検出精度が変わることがあります。
     </footer>
   </main>
@@ -395,10 +395,11 @@
     setPhase('running');
     setStageUI('prompt', noteNameFromMidi(targetMidi));
 
-    // Beat1: 録音（出題音終了+150ms余白 → 0.5秒固定）
+    // Beat1: 録音（出題音終了+150ms余白 → テンポに応じて動的に決定）
+    // 拍の長さから余白分を引いた時間を最大限録音に充てる（ただし最小0.3秒）
     var beat1Start = taskStartCtx + secPerBeat;
     var recordStartCtx = beat1Start + 0.15;
-    var recordDur = 0.5;
+    var recordDur = Math.max(0.3, secPerBeat - 0.25); // Beat終了前100msの安全マージンを確保
 
     await wait(beat1Start - ctx.currentTime);
     setStageUI('wait', null);
@@ -413,17 +414,18 @@
     await wait(recordDur);
     sampling = false;
 
-    // 判定（先頭100msを除いた区間のメディアン）
-    // オクターブ違いは音名（ピッチクラス）が合っていれば正解として扱う：
-    // 検出周波数を最も近いオクターブに補正したうえでセント誤差を算出する
-    var validSamples = pitchSamples.filter(function(s){ return s.t >= 0.1; }).map(function(s){ return s.f; }).sort(function(a,b){ return a-b; });
+    // 判定（先頭の安定待機時間を除いた区間のメディアン）
+    // 安定待機時間は：最小100ms、または全体の20%のうち大きい方
+    var skipDur = Math.max(0.1, recordDur * 0.2);
+    var validSamples = pitchSamples.filter(function(s){ return s.t >= skipDur; }).map(function(s){ return s.f; }).sort(function(a,b){ return a-b; });
     var detected = null, cents = null, bucket = 'undetected', octaveShift = 0;
     if(validSamples.length > 0){
       detected = validSamples[Math.floor(validSamples.length/2)];
       var expected = midiToFreq(targetMidi);
       var rawCents = 1200 * log2(detected/expected);
-      octaveShift = Math.round(rawCents/1200); // 何オクターブ分ずれていたか（+:上／-:下）
-      cents = rawCents - 1200*octaveShift; // オクターブを揃えた後の誤差
+      // オクターブ違いは音名（ピッチクラス）が合っていれば正解として扱う
+      octaveShift = Math.round(rawCents/1200);
+      cents = rawCents - 1200*octaveShift;
       var absCents = Math.abs(cents);
       if(absCents <= 30) bucket = 'good';
       else if(absCents <= 50) bucket = 'warn30';
