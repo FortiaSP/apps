@@ -140,7 +140,6 @@
         <div class="field" style="flex:1; min-width:220px;">
           <label for="timbre-select">出題音の音色</label>
           <select id="timbre-select">
-            <option value="sine">サイン波（やわらかい純音）</option>
             <option value="triangle">トライアングル波</option>
             <option value="sawtooth">のこぎり波</option>
             <option value="square">矩形波</option>
@@ -214,7 +213,7 @@
 
   // ---------- 定数 ----------
   var NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-  var TIMBRE_VALUES = ['sine','triangle','sawtooth','square','warm'];
+  var TIMBRE_VALUES = ['triangle','sawtooth','square','warm'];
   var MIN_MIDI = 36; // C2
   var MAX_MIDI = 84; // C6
 
@@ -230,7 +229,7 @@
   // ---------- 状態 ----------
   var audioCtx = null;
   var tempo = 76;
-  var timbre = 'sine';
+  var timbre = 'triangle';
   var lowMidi = 48, highMidi = 72; // 初期値 C3-C5
   var taskCount = 20;
   var revealNames = false;
@@ -357,15 +356,15 @@
     var ctx = ensureAudioCtx();
     var now = ctx.currentTime;
     
-    // 警告音：「ブッ」という短い低周波音（300Hz, 150ms）
+    // 警告音：800Hz矩形波、150ms（粗い、高い警告音）
     if(feedbackMode === 'buzz' || feedbackMode === 'both'){
       var osc = ctx.createOscillator();
       var gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(300, now);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(800, now);
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.18, now+0.02);
-      gain.gain.setValueAtTime(0.18, now+0.1);
+      gain.gain.exponentialRampToValueAtTime(0.28, now+0.01);
+      gain.gain.setValueAtTime(0.28, now+0.1);
       gain.gain.exponentialRampToValueAtTime(0.0001, now+0.15);
       osc.connect(gain); gain.connect(ctx.destination);
       osc.start(now); osc.stop(now+0.15);
