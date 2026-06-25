@@ -363,7 +363,7 @@
     return timbre;
   }
 
-  // ピアノ音再生（複合オシレータ：基本周波数+倍音、強いアタック＋速い減衰＋インハーモニシティ）
+  // ピアノ音再生（複合オシレータ：基本周波数+倍音、強いアタック＋速い減衰＋インハーモニシティ＋打鍵ノイズ）
   function playPiano(freq, atTime, dur, ctx){
     var harmonics = [
       {ratio: 1.0,    amp: 1.0},    // 基本波（ずれなし）
@@ -371,6 +371,22 @@
       {ratio: 3.004,  amp: 0.2},    // 3倍音（さらに高い）
       {ratio: 4.009,  amp: 0.1}     // 4倍音（最も高い）
     ];
+    
+    // 打鍵ノイズ（アタック時のみ、短い）
+    var noiseBuffer = ctx.createBufferSource();
+    var noiseAudioBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate); // 50ms
+    var noiseData = noiseAudioBuffer.getChannelData(0);
+    for(var i=0; i<noiseData.length; i++){
+      noiseData[i] = Math.random() * 2 - 1; // ホワイトノイズ生成
+    }
+    noiseBuffer.buffer = noiseAudioBuffer;
+    var noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.15, atTime); // 打鍵ノイズの音量
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, atTime+0.05); // 50msで消える
+    noiseBuffer.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noiseBuffer.start(atTime);
+    noiseBuffer.stop(atTime+0.05);
     
     harmonics.forEach(function(h){
       var osc = ctx.createOscillator();
@@ -435,9 +451,15 @@
     var gain = ctx.createGain();
     applyTimbre(osc, ctx, useTimbre);
     osc.frequency.setValueAtTime(freq, atTime);
+    
+    // 波形ごとにゲイン値を調整（倍音量に応じて聴感音量を統一）
+    var gainValue = 0.32;  // デフォルト（triangle基準）
+    if(useTimbre === 'sawtooth') gainValue = 0.14;   // 倍音が多いため約1/2.3に低減
+    if(useTimbre === 'square') gainValue = 0.16;     // 倍音が多いため約1/2に低減
+    
     gain.gain.setValueAtTime(0.0001, atTime);
-    gain.gain.exponentialRampToValueAtTime(0.32, atTime+0.03);
-    gain.gain.setValueAtTime(0.32, atTime + Math.max(0.05, dur-0.12));
+    gain.gain.exponentialRampToValueAtTime(gainValue, atTime+0.03);
+    gain.gain.setValueAtTime(gainValue, atTime + Math.max(0.05, dur-0.12));
     gain.gain.exponentialRampToValueAtTime(0.0001, atTime+dur);
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start(atTime); osc.stop(atTime+dur+0.02);
@@ -608,8 +630,9 @@
       icon.innerHTML = bucket === 'good' ? '◎' : (bucket === 'bad' || bucket === 'undetected' ? '×' : '△');
       label.textContent = (bucket === 'good' ? '正解！' : (bucket === 'undetected' ? '声を検出できませんでした' : (bucket === 'bad' ? 'ずれが大きい' : '近いです'))) + octaveLabel;
       var centsClass = bucket === 'good' ? 'good' : (bucket === 'warn30' ? 'warn' : 'bad');
-      var centsText = cents === null ? '検出不可' : ((cents>0?'+':'')+cents+'¢');
-      sub.innerHTML = cents === null ? '\u00a0' : ('誤差 <span class="cents ' + centsClass + '">' + centsText + '</span>');
+      var centsRounded = cents === null ? null : Math.round(cents);
+      var centsText = centsRounded === null ? '検出不可' : ((centsRounded>0?'+':'')+centsRounded+'¢');
+      sub.innerHTML = centsRounded === null ? '\u00a0' : ('誤差 <span class="cents ' + centsClass + '">' + centsText + '</span>');
     }
   }
 
@@ -728,7 +751,7 @@
     renderTaskList();
   }
 
-  // 音域を5分割した帯ごとの集計（平均誤差・高低方向）
+  // 音域を5分割した帯ごとの集計（中央値で傾向を捉える）
   function renderBandList(){
     var el = document.getElementById('band-list');
     var span = highMidi - lowMidi;
@@ -742,9 +765,15 @@
       var bHigh = span === 0 ? highMidi : lowMidi + Math.round(span*(b+1)/bandCount) - (b===bandCount-1?0:1);
       if(b === bandCount-1) bHigh = highMidi;
       var inBand = taskResults.filter(function(r){ return r.targetMidi >= bLow && r.targetMidi <= bHigh && r.cents !== null; });
-      var avgSigned = inBand.length > 0 ? inBand.reduce(function(s,r){ return s+r.cents; }, 0) / inBand.length : null;
-      bands.push({bLow:bLow, bHigh:bHigh, n:inBand.length, avgSigned:avgSigned});
-      if(avgSigned !== null) maxAbsAvg = Math.max(maxAbsAvg, Math.abs(avgSigned));
+      // 中央値（メディアン）を計算：傾向をより正確に捉える
+      var medianSigned = null;
+      if(inBand.length > 0){
+        var sorted = inBand.map(function(r){ return r.cents; }).sort(function(a,b){ return a-b; });
+        var mid = Math.floor(sorted.length / 2);
+        medianSigned = sorted.length % 2 === 0 ? (sorted[mid-1] + sorted[mid]) / 2 : sorted[mid];
+      }
+      bands.push({bLow:bLow, bHigh:bHigh, n:inBand.length, medianSigned:medianSigned});
+      if(medianSigned !== null) maxAbsAvg = Math.max(maxAbsAvg, Math.abs(medianSigned));
     }
     maxAbsAvg = Math.max(maxAbsAvg, 20); // 視覚的な下限スケール
 
@@ -752,18 +781,18 @@
       var rangeLabel = noteNameFromMidi(band.bLow) + '〜' + noteNameFromMidi(band.bHigh);
       var nText = band.n + '件';
       var biasText, biasClass;
-      if(band.avgSigned === null){
+      if(band.medianSigned === null){
         biasText = '—'; biasClass = '';
       } else {
-        biasClass = band.avgSigned > 0 ? 'high' : (band.avgSigned < 0 ? 'low' : '');
-        biasText = (band.avgSigned>0?'+':'') + Math.round(band.avgSigned) + '¢' + (band.avgSigned>0?'(高)':(band.avgSigned<0?'(低)':''));
+        biasClass = band.medianSigned > 0 ? 'high' : (band.medianSigned < 0 ? 'low' : '');
+        biasText = (band.medianSigned>0?'+':'') + Math.round(band.medianSigned) + '¢' + (band.medianSigned>0?'(高)':(band.medianSigned<0?'(低)':''));
       }
       return '' +
         '<div class="band-row">' +
           '<div class="range-label">' + rangeLabel + '</div>' +
           '<div class="n">' + nText + '</div>' +
           '<div class="bias ' + biasClass + '">' + biasText + '</div>' +
-          '<div class="bargauge">' + bandBarSVG(band.avgSigned, maxAbsAvg) + '</div>' +
+          '<div class="bargauge">' + bandBarSVG(band.medianSigned, maxAbsAvg) + '</div>' +
         '</div>';
     }).join('');
   }
