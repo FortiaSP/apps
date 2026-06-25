@@ -151,6 +151,8 @@
             <option value="sawtooth">のこぎり波</option>
             <option value="square">矩形波</option>
             <option value="warm">倍音を重ねた音（ウォーム）</option>
+            <option value="piano">ピアノ</option>
+            <option value="trumpet">トランペット</option>
             <option value="random">課題ごとにランダムに切り替える</option>
           </select>
         </div>
@@ -220,7 +222,7 @@
 
   // ---------- 定数 ----------
   var NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-  var TIMBRE_VALUES = ['triangle','sawtooth','square','warm'];
+  var TIMBRE_VALUES = ['triangle','sawtooth','square','warm','piano','trumpet'];
   var MIN_MIDI = 36; // C2
   var MAX_MIDI = 84; // C6
   // Cメジャースケール（ピッチクラス内でのオフセット）
@@ -346,10 +348,14 @@
   function applyTimbre(osc, ctx, t){
     if(t === 'warm'){
       osc.setPeriodicWave(getWarmWave(ctx));
+    } else if(t === 'piano' || t === 'trumpet'){
+      // ピアノ・トランペットはplayPrompt内で処理するため、ここではスキップ
+      osc.type = 'sine';
     } else {
       osc.type = (TIMBRE_VALUES.indexOf(t) >= 0) ? t : 'sine';
     }
   }
+  
   function currentTimbreForTask(){
     if(timbre === 'random'){
       return TIMBRE_VALUES[randInt(0, TIMBRE_VALUES.length-1)];
@@ -357,9 +363,74 @@
     return timbre;
   }
 
+  // ピアノ音再生（複合オシレータ：基本周波数+倍音、強いアタック＋速い減衰＋インハーモニシティ）
+  function playPiano(freq, atTime, dur, ctx){
+    var harmonics = [
+      {ratio: 1.0,    amp: 1.0},    // 基本波（ずれなし）
+      {ratio: 2.001,  amp: 0.4},    // 2倍音（わずかに高い）
+      {ratio: 3.004,  amp: 0.2},    // 3倍音（さらに高い）
+      {ratio: 4.009,  amp: 0.1}     // 4倍音（最も高い）
+    ];
+    
+    harmonics.forEach(function(h){
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq * h.ratio, atTime);
+      
+      // 倍音比に応じた減衰：高次倍音ほど素早く消える（係数0.5で半分の速度）
+      var decay = dur * (0.5 / h.ratio);
+      gain.gain.setValueAtTime(0.0001, atTime);
+      gain.gain.exponentialRampToValueAtTime(0.32 * h.amp, atTime+0.01);  // 強いアタック
+      gain.gain.setValueAtTime(0.32 * h.amp, atTime + Math.max(0.05, dur-0.12));
+      gain.gain.linearRampToValueAtTime(0.0001, atTime+decay);
+      
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(atTime); osc.stop(atTime+decay+0.02);
+    });
+  }
+
+  // トランペット音再生（複合オシレータ：基本周波数+倍音、長い余韻）
+  function playTrumpet(freq, atTime, dur, ctx){
+    var harmonics = [
+      {ratio: 1.0, amp: 1.0},    // 基本波
+      {ratio: 2.0, amp: 0.4},    // 2倍音
+      {ratio: 3.0, amp: 0.2},    // 3倍音
+      {ratio: 4.0, amp: 0.1}     // 4倍音
+    ];
+    
+    harmonics.forEach(function(h){
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq * h.ratio, atTime);
+      
+      // 長めの減衰（トランペットの長い余韻を表現）
+      var decay = dur * 1.5; // 出題音より長く減衰
+      gain.gain.setValueAtTime(0.0001, atTime);
+      gain.gain.exponentialRampToValueAtTime(0.32 * h.amp, atTime+0.01);  // 強いアタック
+      gain.gain.setValueAtTime(0.32 * h.amp, atTime + Math.max(0.05, dur-0.12));
+      gain.gain.exponentialRampToValueAtTime(0.0001, atTime+decay);
+      
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(atTime); osc.stop(atTime+decay+0.02);
+    });
+  }
+
   // 出題音（課題ごとに選んだ音色で再生）
   function playPrompt(freq, atTime, dur, useTimbre){
     var ctx = ensureAudioCtx();
+    
+    // ピアノ・トランペットは複合オシレータで特別処理
+    if(useTimbre === 'piano'){
+      playPiano(freq, atTime, dur, ctx);
+      return;
+    }
+    if(useTimbre === 'trumpet'){
+      playTrumpet(freq, atTime, dur, ctx);
+      return;
+    }
+    
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
     applyTimbre(osc, ctx, useTimbre);
