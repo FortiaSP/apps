@@ -93,7 +93,7 @@
 
   .result-row{display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;}
   .result-row:last-child{border-bottom:none;}
-  .result-row .names{width:130px; font-family:var(--mono-font); font-size:13px;}
+  .result-row .names{width:160px; font-family:var(--mono-font); font-size:13px;}
   .result-row .freq{width:80px; font-family:var(--mono-font); font-size:12px; color:var(--text-dim);}
   .result-row .cents{width:56px; font-family:var(--mono-font); font-weight:600; text-align:right;}
   .result-row .gauge{flex:0 0 120px;}
@@ -1258,17 +1258,20 @@
         var startT = cursor + durSec*0.15;
         var endT = cursor + durSec*0.85;
         var samples = pitchSamples.filter(function(s){ return s.t>=startT && s.t<endT; }).map(function(s){ return s.f; }).sort(function(a,b){ return a-b; });
-        var detected = null, cents = null;
+        var detected = null, cents = null, octaveShift = 0;
         if(samples.length > 0){
           detected = samples[Math.floor(samples.length/2)];
           var expected = midiToFreq(item.midi+shift);
-          cents = Math.round(1200*log2(detected/expected));
+          var rawCents = 1200*log2(detected/expected);
+          // オクターブ違いは音名（ピッチクラス）が合っていれば正解として扱う
+          octaveShift = Math.round(rawCents/1200);
+          cents = Math.round(rawCents - 1200*octaveShift);
           sumAbs += Math.abs(cents);
           count++;
         } else {
           undetected++;
         }
-        rows.push({type:'note', original:item.pitchName, transposed:noteNameFromMidi(item.midi+shift), targetMidi:item.midi+shift, detected:detected, cents:cents});
+        rows.push({type:'note', original:item.pitchName, transposed:noteNameFromMidi(item.midi+shift), targetMidi:item.midi+shift, detected:detected, cents:cents, octaveShift:octaveShift});
       } else {
         rows.push({type:'rest'});
       }
@@ -1296,11 +1299,19 @@
       '</svg>';
   }
 
+  // オクターブずれ量からラベル文字列を生成（0の場合は空文字）
+  function octaveTextLabel(octaveShift){
+    if(!octaveShift) return '';
+    var n = Math.abs(octaveShift);
+    var dir = octaveShift > 0 ? '上' : '下';
+    return '（' + (n>1 ? n+'' : '') + 'オクターブ' + dir + '）';
+  }
+
   function renderResults(results, shift){
     var summary = document.getElementById('result-summary');
     var shiftLabel = shift===0 ? '移調なし(原調)' : (shift>0 ? ('+'+shift+'半音') : (shift+'半音'));
     summary.innerHTML =
-      '<div class="stat"><div class="big">' + (results.avgAbsCents!==null ? Math.round(results.avgAbsCents) : '—') + '¢</div><div class="label">平均ずれ(絶対値)</div></div>' +
+      '<div class="stat"><div class="big">' + (results.avgAbsCents!==null ? Math.round(results.avgAbsCents) : '—') + '¢</div><div class="label">平均ずれ(絶対値・オクターブ補正後)</div></div>' +
       '<div class="stat"><div class="big">' + shiftLabel + '</div><div class="label">今回の移調</div></div>' +
       '<div class="stat"><div class="big">' + results.undetected + '</div><div class="label">検出できなかった音</div></div>';
 
@@ -1311,10 +1322,11 @@
       }
       var centsText = row.cents===null ? '—' : (row.cents>0 ? ('+'+row.cents+'¢') : (row.cents+'¢'));
       var centsColor = row.cents===null ? 'var(--text-dim)' : (Math.abs(row.cents)>30 ? 'var(--bad)' : (Math.abs(row.cents)>10 ? 'var(--warn)' : 'var(--good)'));
+      var octaveLabel = octaveTextLabel(row.octaveShift);
       return '' +
         '<div class="result-row">' +
           '<button type="button" class="play-btn-sm" data-midi="' + row.targetMidi + '" title="正しい音を再生">▶</button>' +
-          '<div class="names">' + row.original + ' → ' + row.transposed + '</div>' +
+          '<div class="names">' + row.original + ' → ' + row.transposed + (octaveLabel ? '<br><span style="color:var(--text-dim); font-size:11px;">' + octaveLabel + '</span>' : '') + '</div>' +
           '<div class="freq">' + (row.detected ? row.detected.toFixed(1)+'Hz' : '—') + '</div>' +
           '<div class="cents" style="color:' + centsColor + '">' + centsText + '</div>' +
           '<div class="gauge">' + gaugeSVG(row.cents) + '</div>' +
