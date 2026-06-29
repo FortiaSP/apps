@@ -337,6 +337,8 @@
     gap:4px;
     cursor:pointer;
     transition:background .08s ease, border-color .08s ease;
+    position:relative;
+    z-index:21; /* stays visible above the count-in overlay (z-index:20), same position */
   }
   .tap-pad.pressed{
     background:var(--amber-soft);
@@ -912,7 +914,10 @@
     ensureAudio();
     const t = audioCtx.currentTime;
     const beatFloat = (t - task.startTime) / task.beatInterval;
-    if(beatFloat < -0.5) return; // before lead-in
+    if(beatFloat < -0.5){
+      pulsePad(); // count-in: give tactile/visual feedback but don't score
+      return;
+    }
     const nearestBeat = Math.round(beatFloat);
     const expectedTime = task.startTime + nearestBeat * task.beatInterval;
     const devSec = t - expectedTime;
