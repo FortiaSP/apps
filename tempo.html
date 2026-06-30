@@ -543,6 +543,18 @@
     <div class="field">
       <div class="field-head">
         <div>
+          <div class="field-label">音声出力遅延の補正</div>
+          <span class="field-sub">端末のスピーカー遅延を補正する。「遅れている」と判定されがちな場合は数値を上げる</span>
+        </div>
+        <div class="field-value"><span id="val-latency">0</span><span class="unit">ms</span></div>
+      </div>
+      <input type="range" id="sl-latency" min="0" max="150" step="5" value="0">
+      <div class="scale-labels"><span>0ms（補正なし）</span><span>150ms</span></div>
+    </div>
+
+    <div class="field">
+      <div class="field-head">
+        <div>
           <div class="field-label">音の消失拍数</div>
           <span class="field-sub">1回あたり何拍ほど消えるか</span>
         </div>
@@ -677,6 +689,7 @@
   const sl = {
     bpm: document.getElementById('sl-bpm'),
     tol: document.getElementById('sl-tol'),
+    latency: document.getElementById('sl-latency'),
     droplen: document.getElementById('sl-droplen'),
     droppct: document.getElementById('sl-droppct'),
     dur: document.getElementById('sl-dur'),
@@ -684,6 +697,7 @@
   const val = {
     bpm: document.getElementById('val-bpm'),
     tol: document.getElementById('val-tol'),
+    latency: document.getElementById('val-latency'),
     droplen: document.getElementById('val-droplen'),
     droppct: document.getElementById('val-droppct'),
     dur: document.getElementById('val-dur'),
@@ -695,6 +709,7 @@
   }
   sl.bpm.addEventListener('input', ()=> val.bpm.textContent = sl.bpm.value);
   sl.tol.addEventListener('input', ()=> val.tol.textContent = sl.tol.value);
+  sl.latency.addEventListener('input', ()=> val.latency.textContent = sl.latency.value);
   sl.droplen.addEventListener('input', ()=> val.droplen.textContent = sl.droplen.value);
   sl.droppct.addEventListener('input', ()=> val.droppct.textContent = sl.droppct.value);
   sl.dur.addEventListener('input', ()=> val.dur.textContent = fmtDur(parseInt(sl.dur.value,10)));
@@ -796,6 +811,7 @@
 
     const bpm = parseInt(sl.bpm.value, 10);
     const tolerancePct = parseInt(sl.tol.value, 10);
+    const latencyOffsetSec = parseInt(sl.latency.value, 10) / 1000; // ms -> seconds
     const dropLenTarget = parseInt(sl.droplen.value, 10);
     const dropPct = parseInt(sl.droppct.value, 10);
     const durationSec = parseInt(sl.dur.value, 10);
@@ -810,7 +826,7 @@
     const startTime = audioCtx.currentTime + leadIn + COUNT_IN_BEATS * beatInterval;
 
     task = {
-      bpm, beatInterval, tolerancePct, durationSec,
+      bpm, beatInterval, tolerancePct, latencyOffsetSec, durationSec,
       startTime,
       totalBeats,
       dropWindows,
@@ -989,7 +1005,10 @@
       return;
     }
     const nearestBeat = Math.round(beatFloat);
-    const expectedTime = task.startTime + nearestBeat * task.beatInterval;
+    // the click is scheduled at expectedTime, but the device's speaker actually
+    // outputs it latencyOffsetSec later — so judge the tap against that delayed,
+    // perceived time rather than the raw scheduled time.
+    const expectedTime = task.startTime + nearestBeat * task.beatInterval + task.latencyOffsetSec;
     const devSec = t - expectedTime;
     const devPct = (devSec / task.beatInterval) * 100;
     const dropout = isInDropout(nearestBeat, task.dropWindows);
@@ -1079,23 +1098,6 @@
     e.preventDefault();
     handleTap();
   });
-
-  /* ---- iOS Safari only: manual double-tap-zoom guard for the task screen ----
-     touch-action: none already covers Android and most cases, but iOS Safari has
-     known gaps (dynamically-shown elements, rapid taps) where it doesn't fully
-     suppress double-tap-to-zoom. This adds a targeted touchend handler, limited
-     to the task screen, that prevents the browser's double-tap zoom without
-     duplicating taps already handled by pointerdown on the tap pad. */
-  const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
-                (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
-  if(isIOS){
-    const taskScreenEl = document.getElementById('screen-task');
-    taskScreenEl.addEventListener('touchend', (e)=>{
-      // the tap pad already handles its own taps via pointerdown; don't double-fire here
-      if(e.target.closest('#tap-pad')) return;
-      e.preventDefault();
-    }, {passive:false});
-  }
 
   /* ---- end of task / results ---- */
   function endTask(){
