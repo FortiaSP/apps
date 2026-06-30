@@ -36,6 +36,11 @@
     -webkit-tap-highlight-color: transparent;
     user-select:none;
     overflow-x:hidden;
+    overscroll-behavior-y: none; /* prevent pull-to-refresh / bounce eating taps */
+  }
+  body.task-active{
+    overflow: hidden;
+    touch-action: none; /* belt-and-suspenders: no scroll/zoom gestures anywhere during the task */
   }
   #app{
     width:100%;
@@ -185,6 +190,40 @@
     font-family:var(--mono);
     margin-top:2px;
   }
+
+  .toggle-field{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:26px;
+    padding:14px 16px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+  }
+  .toggle-field .tf-text{flex:1;padding-right:14px;}
+  .toggle-field .field-label{margin-bottom:2px;}
+  .toggle-switch{
+    position:relative;
+    width:46px;
+    height:26px;
+    flex:none;
+    background:var(--line);
+    border-radius:13px;
+    border:none;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  .toggle-switch.on{background:var(--amber);}
+  .toggle-switch .knob{
+    position:absolute;
+    top:3px;left:3px;
+    width:20px;height:20px;
+    border-radius:50%;
+    background:var(--ink);
+    transition:transform .15s ease;
+  }
+  .toggle-switch.on .knob{transform:translateX(20px);}
 
   .start-btn{
     margin-top:8px;
@@ -339,6 +378,7 @@
     transition:background .08s ease, border-color .08s ease;
     position:relative;
     z-index:21; /* stays visible above the count-in overlay (z-index:20), same position */
+    touch-action: none; /* this element never triggers scroll/zoom gestures, on any device */
   }
   .tap-pad.pressed{
     background:var(--amber-soft);
@@ -526,6 +566,16 @@
       <div class="scale-labels"><span>20秒</span><span>5分</span></div>
     </div>
 
+    <div class="toggle-field">
+      <div class="tf-text">
+        <div class="field-label">タップ毎の即時フィードバック</div>
+        <span class="field-sub">○×やズレ%をタップごとに表示するか。オフにすると結果画面でのみ確認できます。</span>
+      </div>
+      <button type="button" class="toggle-switch on" id="toggle-feedback" aria-pressed="true">
+        <span class="knob"></span>
+      </button>
+    </div>
+
     <button class="start-btn" id="btn-start">課題を開始する</button>
   </section>
 
@@ -577,13 +627,13 @@
       <div class="phase-card">
         <div class="pc-title"><span class="pc-dot" style="background:var(--good)"></span>音あり時</div>
         <div class="pc-row"><span class="l">正答率</span><span class="v" id="res-on-acc">--%</span></div>
-        <div class="pc-row"><span class="l">平均ズレ</span><span class="v" id="res-on-dev">--%</span></div>
+        <div class="pc-row"><span class="l">平均ズレ（絶対値）</span><span class="v" id="res-on-dev">--%</span></div>
         <div class="pc-row"><span class="l">拍数</span><span class="v" id="res-on-n">--</span></div>
       </div>
       <div class="phase-card">
         <div class="pc-title"><span class="pc-dot" style="background:var(--bad)"></span>消失時</div>
         <div class="pc-row"><span class="l">正答率</span><span class="v" id="res-off-acc">--%</span></div>
-        <div class="pc-row"><span class="l">平均ズレ</span><span class="v" id="res-off-dev">--%</span></div>
+        <div class="pc-row"><span class="l">平均ズレ（絶対値）</span><span class="v" id="res-off-dev">--%</span></div>
         <div class="pc-row"><span class="l">拍数</span><span class="v" id="res-off-n">--</span></div>
       </div>
     </div>
@@ -611,6 +661,7 @@
   function showScreen(name){
     Object.values(screens).forEach(s=>s.classList.remove('active'));
     screens[name].classList.add('active');
+    document.body.classList.toggle('task-active', name === 'task');
   }
 
   const sl = {
@@ -637,6 +688,15 @@
   sl.droplen.addEventListener('input', ()=> val.droplen.textContent = sl.droplen.value);
   sl.droppct.addEventListener('input', ()=> val.droppct.textContent = sl.droppct.value);
   sl.dur.addEventListener('input', ()=> val.dur.textContent = fmtDur(parseInt(sl.dur.value,10)));
+
+  /* ---------------- Immediate feedback on/off toggle ---------------- */
+  let immediateFeedbackEnabled = true; // default: on
+  const toggleFeedbackBtn = document.getElementById('toggle-feedback');
+  toggleFeedbackBtn.addEventListener('click', ()=>{
+    immediateFeedbackEnabled = !immediateFeedbackEnabled;
+    toggleFeedbackBtn.classList.toggle('on', immediateFeedbackEnabled);
+    toggleFeedbackBtn.setAttribute('aria-pressed', String(immediateFeedbackEnabled));
+  });
 
   /* ---------------- Audio setup ---------------- */
   let audioCtx = null;
@@ -950,6 +1010,15 @@
     const mark = document.getElementById('fb-mark');
     const detail = document.getElementById('fb-detail');
     mark.classList.remove('good','bad','miss');
+
+    if(!immediateFeedbackEnabled){
+      // judgment is still recorded internally; only the visible mark/detail are suppressed
+      mark.textContent = '·';
+      mark.classList.add('miss');
+      detail.textContent = '記録中（結果は終了後に表示）';
+      return;
+    }
+
     if(kind === 'good'){
       mark.textContent = '○';
       mark.classList.add('good');
@@ -977,9 +1046,14 @@
       if(b.correct) correct++;
       if(b.devPct !== null) devSum += Math.abs(b.devPct);
     });
-    document.getElementById('stat-acc').textContent = total ? Math.round(correct/total*100)+'%' : '--%';
     document.getElementById('stat-taps').textContent = task.taps.length;
-    document.getElementById('stat-avgdev').textContent = total ? (devSum/total).toFixed(1)+'%' : '--%';
+    if(immediateFeedbackEnabled){
+      document.getElementById('stat-acc').textContent = total ? Math.round(correct/total*100)+'%' : '--%';
+      document.getElementById('stat-avgdev').textContent = total ? (devSum/total).toFixed(1)+'%' : '--%';
+    } else {
+      document.getElementById('stat-acc').textContent = '非表示';
+      document.getElementById('stat-avgdev').textContent = '非表示';
+    }
   }
 
   /* ---- key/tap input wiring ---- */
@@ -1045,11 +1119,11 @@
       const avgSigned = signedSum/signedN;
       let tendency;
       if(Math.abs(avgSigned) < 2){
-        tendency = '全体として大きな偏りはなく、テンポにほぼ正確に乗れています。';
+        tendency = '方向の偏りは小さく、テンポにほぼ正確に乗れています（早い/遅いの打ち消し合いを含む指標です）。';
       } else if(avgSigned < 0){
-        tendency = `平均して<b>${Math.abs(avgSigned).toFixed(1)}%早い</b>傾向（突っ走り）が見られます。`;
+        tendency = `早いタップと遅いタップを打ち消さずに平均すると、<b>${Math.abs(avgSigned).toFixed(1)}%早い</b>方向への偏り（突っ走り）が見られます。`;
       } else {
-        tendency = `平均して<b>${avgSigned.toFixed(1)}%遅い</b>傾向（後ろ乗り）が見られます。`;
+        tendency = `早いタップと遅いタップを打ち消さずに平均すると、<b>${avgSigned.toFixed(1)}%遅い</b>方向への偏り（後ろ乗り）が見られます。`;
       }
       const onAvgDev = on.total ? on.devSum/on.total : null;
       const offAvgDev = off.total ? off.devSum/off.total : null;
