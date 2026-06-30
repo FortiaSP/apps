@@ -465,6 +465,7 @@
   .retry-row{
     display:flex;
     gap:10px;
+    margin-bottom:26px;
   }
   .btn-secondary{
     flex:1;
@@ -477,6 +478,7 @@
     font-size:14px;
     font-weight:700;
     cursor:pointer;
+    transition:opacity .15s ease;
   }
   .btn-primary{
     flex:1.4;
@@ -489,6 +491,12 @@
     font-size:14px;
     font-weight:900;
     cursor:pointer;
+    transition:opacity .15s ease;
+  }
+  .btn-secondary:disabled,
+  .btn-primary:disabled{
+    opacity:0.35;
+    cursor:not-allowed;
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -537,9 +545,9 @@
           <div class="field-label">音の消失拍数</div>
           <span class="field-sub">1回あたり何拍ほど消えるか</span>
         </div>
-        <div class="field-value"><span id="val-droplen">6</span><span class="unit">拍前後</span></div>
+        <div class="field-value"><span id="val-droplen">10</span><span class="unit">拍前後</span></div>
       </div>
-      <input type="range" id="sl-droplen" min="2" max="16" step="1" value="6">
+      <input type="range" id="sl-droplen" min="2" max="16" step="1" value="10">
       <div class="scale-labels"><span>短い（2拍）</span><span>長い（16拍）</span></div>
     </div>
 
@@ -549,9 +557,9 @@
           <div class="field-label">音の消失頻度</div>
           <span class="field-sub">実施時間のうち何%を無音にするか</span>
         </div>
-        <div class="field-value"><span id="val-droppct">35</span><span class="unit">%</span></div>
+        <div class="field-value"><span id="val-droppct">60</span><span class="unit">%</span></div>
       </div>
-      <input type="range" id="sl-droppct" min="0" max="80" step="5" value="35">
+      <input type="range" id="sl-droppct" min="0" max="80" step="5" value="60">
       <div class="scale-labels"><span>0%（消失なし）</span><span>80%</span></div>
     </div>
 
@@ -618,6 +626,11 @@
     <div class="eyebrow">RESULT</div>
     <h1>お疲れさまでした</h1>
 
+    <div class="retry-row" id="retry-row">
+      <button class="btn-secondary" id="btn-settings">設定を変える</button>
+      <button class="btn-primary" id="btn-retry">同じ設定で再挑戦</button>
+    </div>
+
     <div class="result-hero">
       <div class="big" id="res-overall">--%</div>
       <div class="cap">総合正答率</div>
@@ -639,11 +652,6 @@
     </div>
 
     <div class="bias-note" id="bias-note">傾向を計算中…</div>
-
-    <div class="retry-row">
-      <button class="btn-secondary" id="btn-settings">設定を変える</button>
-      <button class="btn-primary" id="btn-retry">同じ設定で再挑戦</button>
-    </div>
   </section>
 
 </div>
@@ -1143,6 +1151,20 @@
     }
 
     showScreen('result');
+    lockResultButtons();
+  }
+
+  /* ---- prevent accidental taps right after the task ends from hitting these buttons ---- */
+  const RESULT_BUTTON_LOCK_MS = 1500;
+  function lockResultButtons(){
+    const btnSettings = document.getElementById('btn-settings');
+    const btnRetry = document.getElementById('btn-retry');
+    btnSettings.disabled = true;
+    btnRetry.disabled = true;
+    setTimeout(()=>{
+      btnSettings.disabled = false;
+      btnRetry.disabled = false;
+    }, RESULT_BUTTON_LOCK_MS);
   }
 
   /* ---------------- wiring ---------------- */
