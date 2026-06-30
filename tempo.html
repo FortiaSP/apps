@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>テンポキープ・トレーナー</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -1079,6 +1079,23 @@
     e.preventDefault();
     handleTap();
   });
+
+  /* ---- iOS Safari only: manual double-tap-zoom guard for the task screen ----
+     touch-action: none already covers Android and most cases, but iOS Safari has
+     known gaps (dynamically-shown elements, rapid taps) where it doesn't fully
+     suppress double-tap-to-zoom. This adds a targeted touchend handler, limited
+     to the task screen, that prevents the browser's double-tap zoom without
+     duplicating taps already handled by pointerdown on the tap pad. */
+  const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
+                (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
+  if(isIOS){
+    const taskScreenEl = document.getElementById('screen-task');
+    taskScreenEl.addEventListener('touchend', (e)=>{
+      // the tap pad already handles its own taps via pointerdown; don't double-fire here
+      if(e.target.closest('#tap-pad')) return;
+      e.preventDefault();
+    }, {passive:false});
+  }
 
   /* ---- end of task / results ---- */
   function endTask(){
