@@ -1307,21 +1307,20 @@
   /* ---- iOS zoom suppression (task screen only) ----
      iOS Safari ignores user-scalable=no / maximum-scale (accessibility
      policy) and its double-tap-zoom heuristic bypasses touch-action on rapid
-     alternating taps. The zoom decision is made at touchend, so the reliable
-     block is to preventDefault a touchend that follows another within the
-     double-tap window. gesturestart/gesturechange (WebKit-only, all iOS
-     browsers) additionally block pinch, e.g. when two tapping fingers overlap
-     and get misread as a pinch. Both guards are inert outside the task
-     screen, so settings sliders and accessibility zoom work as usual there. */
-  const DOUBLE_TAP_GUARD_MS = 400;
-  let lastTouchEndTime = 0;
+     alternating taps. The zoom decision is made at touchend, so the block is
+     to preventDefault touchend. During the task, EVERY touchend is blocked
+     unconditionally: a time-windowed guard proved leaky, because iOS's own
+     double-tap window (~500ms) extended past the guard's — taps at 400-480ms
+     intervals (BPM 125-150) slipped through the gap. Nothing on the task
+     screen relies on click events (abort button and tap pad are both
+     pointerdown-driven), so blocking all touchend costs nothing.
+     gesturestart/gesturechange (WebKit-only, all iOS browsers) additionally
+     block pinch, e.g. when two tapping fingers overlap and get misread as a
+     pinch. Both guards are inert outside the task screen, so settings
+     sliders and accessibility zoom work as usual there. */
   document.addEventListener('touchend', (e)=>{
     if(!screens.task.classList.contains('active')) return;
-    const now = Date.now();
-    if(now - lastTouchEndTime < DOUBLE_TAP_GUARD_MS){
-      e.preventDefault(); // kills the double-tap-zoom candidate
-    }
-    lastTouchEndTime = now;
+    e.preventDefault();
   }, {passive:false});
 
   ['gesturestart','gesturechange'].forEach((type)=>{
