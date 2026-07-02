@@ -266,6 +266,24 @@
     color:var(--bad);
     border-color:color-mix(in srgb, var(--bad) 40%, transparent);
   }
+  .abort-btn{
+    font-family:var(--sans);
+    font-size:12px;
+    font-weight:700;
+    color:var(--ink-dim);
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:5px 14px;
+    cursor:pointer;
+    position:relative;
+    z-index:21; /* clickable even while the count-in overlay (z-index:20) is up */
+    transition:color .15s ease, border-color .15s ease;
+  }
+  .abort-btn:active{
+    color:var(--ink);
+    border-color:var(--ink-dim);
+  }
   .timer{
     font-family:var(--mono);
     font-size:22px;
@@ -612,6 +630,7 @@
 
     <div class="task-top">
       <span class="phase-tag" id="phase-tag">♪ 音あり</span>
+      <button type="button" class="abort-btn" id="btn-abort">終了</button>
       <div class="timer"><span id="time-left">60</span><span class="total" id="time-total">/60s</span></div>
     </div>
 
@@ -726,11 +745,33 @@
     toggleFeedbackBtn.setAttribute('aria-pressed', String(immediateFeedbackEnabled));
   });
 
+  /* ---------------- Android default latency offset ---------------- */
+  // Android's audio output latency (OS audio stack, browser-independent) is
+  // typically 50-150ms — far larger than iOS/iPadOS. Preset the correction
+  // slider to a middle-of-the-road 80ms on any Android device; the user can
+  // still adjust manually. Applied ONCE at page load only, so a value the
+  // user has adjusted is never overwritten by a screen transition.
+  if(/Android/i.test(navigator.userAgent)){
+    sl.latency.value = 80;
+    val.latency.textContent = '80';
+  }
+
   /* ---------------- Audio setup ---------------- */
   let audioCtx = null;
+  let masterGain = null; // all clicks route through this; muted on abort to silence pre-scheduled clicks
   function ensureAudio(){
     if(!audioCtx){
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.connect(audioCtx.destination);
+      // the OS took audio away mid-task (phone call, another app's audio
+      // session, etc.) — visibilitychange may not fire for these, so this is
+      // the second detection channel for aborting the task
+      audioCtx.onstatechange = ()=>{
+        if((audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') && task && !task.ended){
+          abortTask();
+        }
+      };
     }
     if(audioCtx.state === 'suspended'){
       audioCtx.resume();
@@ -747,7 +788,7 @@
     gain.gain.exponentialRampToValueAtTime(0.5, time + 0.003);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(masterGain);
     osc.start(time);
     osc.stop(time + 0.05);
   }
@@ -812,6 +853,12 @@
   function startTask(){
     ensureAudio();
 
+    // a button (start/retry) may still hold keyboard focus; drop it so a
+    // subsequent Space press is always a beat tap, never a button re-activation
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+
+    masterGain.gain.value = 1; // may have been muted by a previous abort
+
     const bpm = parseInt(sl.bpm.value, 10);
     const tolerancePct = parseInt(sl.tol.value, 10);
     const latencyOffsetSec = parseInt(sl.latency.value, 10) / 1000; // ms -> seconds
@@ -834,9 +881,12 @@
       totalBeats,
       dropWindows,
       nextBeatToSchedule: 0,
+      nextBeatToJudge: 0,   // missed-beat judgment cursor, driven by the audio clock in the scheduler
       schedulerTimer: null,
       uiTimer: null,
-      endTimer: null,
+      railWidth: 0,          // cached once at task start; avoids per-frame layout reads
+      lastShownRemaining: null,
+      lastPhaseDropped: null,
       matchedBeats: new Map(), // beatIndex -> {devPct, correct, dropout}
       taps: [],
       ended: false,
@@ -852,14 +902,16 @@
     buildRailDots();
     document.getElementById('time-total').textContent = '/' + durationSec + 's';
     showScreen('task');
+    // rail width is fixed for the whole task (visibility:hidden keeps layout,
+    // so this stays valid even in feedback-off mode)
+    task.railWidth = document.getElementById('beat-rail').clientWidth;
     showCountInOverlay();
     scheduleCountIn(startTime, beatInterval, COUNT_IN_BEATS);
     runScheduler();
     runUiLoop();
-
-    // schedule end relative to the real task start (after count-in), not the button click
-    const endDelayMs = (startTime + durationSec - audioCtx.currentTime) * 1000;
-    task.endTimer = setTimeout(endTask, endDelayMs);
+    // NOTE: task end and missed-beat judgment are driven off the audio clock
+    // inside the scheduler loop — there is no setTimeout deadline that could
+    // drift away from the audio (Android timer throttling / suspend issues)
   }
 
   /* ---- count-in: 4 audible pickup clicks at the task tempo, not scored ---- */
@@ -888,19 +940,21 @@
     gain.gain.exponentialRampToValueAtTime(0.4, time + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(masterGain);
     osc.start(time);
     osc.stop(time + 0.08);
   }
   function scheduleCountIn(startTime, beatInterval, countInBeats){
+    const myTask = task; // stale-callback guard: no-op if the task was aborted or restarted
     for(let i=0;i<countInBeats;i++){
       const t = startTime - (countInBeats - i) * beatInterval;
       playCountInClick(t); // sample-accurate audio scheduling
       const delayMs = Math.max(0, (t - audioCtx.currentTime) * 1000);
-      setTimeout(()=> updateCountInDisplay(i+1), delayMs);
+      const n = i + 1;
+      setTimeout(()=>{ if(task === myTask && !myTask.ended) updateCountInDisplay(n); }, delayMs);
     }
     const hideDelayMs = Math.max(0, (startTime - audioCtx.currentTime) * 1000);
-    setTimeout(hideCountInOverlay, hideDelayMs);
+    setTimeout(()=>{ if(task === myTask && !myTask.ended) hideCountInOverlay(); }, hideDelayMs);
   }
 
   function buildRailDots(){
@@ -919,10 +973,9 @@
   }
 
   function updateRailPosition(currentBeatFloat){
-    const rail = document.getElementById('beat-rail');
     const track = document.getElementById('beat-rail-track');
     const dotSpacing = 10 + 21*2; // width + margins approx
-    const centerOffset = rail.clientWidth/2;
+    const centerOffset = task.railWidth/2; // cached at task start — no per-frame clientWidth read
     const x = centerOffset - currentBeatFloat*dotSpacing - 5;
     track.style.transform = `translateX(${x}px)`;
   }
@@ -936,26 +989,46 @@
     }
   }
 
-  /* ---- scheduler: lookahead audio scheduling, drift-free ---- */
+  /* ---- scheduler: lookahead audio scheduling, drift-free ----
+     This loop also drives missed-beat judgment and task end by reading the
+     audio clock every tick. setTimeout throttling can only make these checks
+     fire slightly LATE (never early, never desynchronized from the audio),
+     and an OS audio interruption aborts the task via other channels anyway. */
   function runScheduler(){
     const SCHEDULE_AHEAD = 0.12; // seconds
+    const myTask = task; // stale-callback guard for abort / immediate retry
     function tick(){
-      if(task.ended) return;
+      if(myTask.ended) return;
       const now = audioCtx.currentTime;
-      while(task.nextBeatToSchedule < task.totalBeats){
-        const beatTime = task.startTime + task.nextBeatToSchedule * task.beatInterval;
+
+      // schedule upcoming clicks
+      while(myTask.nextBeatToSchedule < myTask.totalBeats){
+        const beatTime = myTask.startTime + myTask.nextBeatToSchedule * myTask.beatInterval;
         if(beatTime > now + SCHEDULE_AHEAD) break;
-        const idx = task.nextBeatToSchedule;
-        const dropped = isInDropout(idx, task.dropWindows);
+        const idx = myTask.nextBeatToSchedule;
+        const dropped = isInDropout(idx, myTask.dropWindows);
         if(!dropped){
           playClick(beatTime, idx % 4 === 0);
         }
         const delay = Math.max(0, (beatTime - audioCtx.currentTime))*1000;
-        setTimeout(()=> flashBeatDot(idx, !dropped), delay);
-        setTimeout(()=> checkMissedBeat(idx), delay + task.beatInterval*1000*0.5);
-        task.nextBeatToSchedule++;
+        setTimeout(()=>{ if(task === myTask && !myTask.ended) flashBeatDot(idx, !dropped); }, delay);
+        myTask.nextBeatToSchedule++;
       }
-      task.schedulerTimer = setTimeout(tick, 25);
+
+      // judge beats whose judgment point (beat time + half interval) has passed
+      while(myTask.nextBeatToJudge < myTask.totalBeats &&
+            now >= myTask.startTime + (myTask.nextBeatToJudge + 0.5) * myTask.beatInterval){
+        checkMissedBeat(myTask.nextBeatToJudge);
+        myTask.nextBeatToJudge++;
+      }
+
+      // end of task, judged on the audio clock itself
+      if(now >= myTask.startTime + myTask.durationSec){
+        endTask();
+        return;
+      }
+
+      myTask.schedulerTimer = setTimeout(tick, 25);
     }
     tick();
   }
@@ -974,29 +1047,41 @@
     }
   }
 
-  /* ---- UI loop: timer + rail position + phase tag ---- */
+  /* ---- UI loop: timer + rail position + phase tag ----
+     DOM writes happen only when the displayed value actually changes, and the
+     rail transform is skipped entirely in feedback-off mode — keeps per-frame
+     main-thread work minimal so tap timestamps jitter less on slow devices. */
   function runUiLoop(){
+    const myTask = task;
+    const railVisible = immediateFeedbackEnabled; // fixed for the whole task
+    const timeLeftEl = document.getElementById('time-left');
+    const tag = document.getElementById('phase-tag');
     function frame(){
-      if(task.ended) return;
-      const elapsed = audioCtx.currentTime - task.startTime;
-      const remaining = elapsed < 0 ? task.durationSec : Math.max(0, Math.ceil(task.durationSec - elapsed));
-      document.getElementById('time-left').textContent = remaining;
-
-      const curBeat = Math.max(0, elapsed / task.beatInterval);
-      updateRailPosition(curBeat);
-
-      const curBeatIdx = Math.floor(curBeat);
-      const dropped = isInDropout(curBeatIdx, task.dropWindows);
-      const tag = document.getElementById('phase-tag');
-      if(dropped){
-        tag.textContent = '✕ 音消失中';
-        tag.classList.add('muted');
-      } else {
-        tag.textContent = '♪ 音あり';
-        tag.classList.remove('muted');
+      if(myTask.ended) return;
+      const elapsed = audioCtx.currentTime - myTask.startTime;
+      const remaining = elapsed < 0 ? myTask.durationSec : Math.max(0, Math.ceil(myTask.durationSec - elapsed));
+      if(remaining !== myTask.lastShownRemaining){
+        timeLeftEl.textContent = remaining;
+        myTask.lastShownRemaining = remaining;
       }
 
-      task.uiTimer = requestAnimationFrame(frame);
+      const curBeat = Math.max(0, elapsed / myTask.beatInterval);
+      if(railVisible) updateRailPosition(curBeat);
+
+      const curBeatIdx = Math.floor(curBeat);
+      const dropped = isInDropout(curBeatIdx, myTask.dropWindows);
+      if(dropped !== myTask.lastPhaseDropped){
+        if(dropped){
+          tag.textContent = '✕ 音消失中';
+          tag.classList.add('muted');
+        } else {
+          tag.textContent = '♪ 音あり';
+          tag.classList.remove('muted');
+        }
+        myTask.lastPhaseDropped = dropped;
+      }
+
+      myTask.uiTimer = requestAnimationFrame(frame);
     }
     frame();
   }
@@ -1006,18 +1091,19 @@
     if(!task || task.ended) return;
     ensureAudio();
     const t = audioCtx.currentTime;
-    const beatFloat = (t - task.startTime) / task.beatInterval;
+    // the click scheduled at beat time is actually HEARD latencyOffsetSec
+    // later, so shift the tap back by that amount before anything else.
+    // Both the nearest-beat assignment and the deviation are then computed in
+    // the same corrected time frame. (Previously the assignment used the
+    // uncorrected time, which could snap a tap to the wrong beat when the
+    // offset approached half a beat interval.)
+    const beatFloat = (t - task.latencyOffsetSec - task.startTime) / task.beatInterval;
     if(beatFloat < -0.5){
       pulsePad(); // count-in: give tactile/visual feedback but don't score
       return;
     }
     const nearestBeat = Math.round(beatFloat);
-    // the click is scheduled at expectedTime, but the device's speaker actually
-    // outputs it latencyOffsetSec later — so judge the tap against that delayed,
-    // perceived time rather than the raw scheduled time.
-    const expectedTime = task.startTime + nearestBeat * task.beatInterval + task.latencyOffsetSec;
-    const devSec = t - expectedTime;
-    const devPct = (devSec / task.beatInterval) * 100;
+    const devPct = (beatFloat - nearestBeat) * 100;
     const dropout = isInDropout(nearestBeat, task.dropWindows);
 
     task.taps.push({beat: nearestBeat, devPct, dropout});
@@ -1111,7 +1197,6 @@
     if(!task || task.ended) return;
     task.ended = true;
     clearTimeout(task.schedulerTimer);
-    clearTimeout(task.endTimer);
     if(task.uiTimer) cancelAnimationFrame(task.uiTimer);
 
     // finalize: mark any very last beat near the end as missed if unmatched (best effort, minor edge case ignored)
@@ -1194,6 +1279,30 @@
       btnRetry.disabled = false;
     }, RESULT_BUTTON_LOCK_MS);
   }
+
+  /* ---- mid-task abort: quit button / app switch / audio interruption ----
+     Spec: any interruption immediately terminates the task, DISCARDS all
+     recorded taps, and returns to the settings screen. Two detection
+     channels: visibilitychange (app switch, screen lock, tab change) and
+     AudioContext statechange (OS reclaimed audio; see ensureAudio). */
+  function abortTask(){
+    if(!task || task.ended) return;
+    task.ended = true;
+    clearTimeout(task.schedulerTimer);
+    if(task.uiTimer) cancelAnimationFrame(task.uiTimer);
+    if(masterGain) masterGain.gain.value = 0; // silence clicks already scheduled up to ~120ms ahead
+    hideCountInOverlay(); // the abort may have happened during count-in
+    showScreen('settings');
+  }
+
+  document.getElementById('btn-abort').addEventListener('click', (e)=>{
+    e.currentTarget.blur(); // never leave keyboard focus on this button — Space must stay a beat tap
+    abortTask();
+  });
+
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden && task && !task.ended) abortTask();
+  });
 
   /* ---------------- wiring ---------------- */
   document.getElementById('btn-start').addEventListener('click', startTask);
