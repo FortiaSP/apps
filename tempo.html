@@ -284,6 +284,9 @@
     background:var(--panel);
     border:1px solid var(--line);
   }
+  .beat-rail.rail-hidden{
+    visibility:hidden; /* keeps layout height so nothing below shifts; rail is simply invisible */
+  }
   .beat-rail-track{
     position:absolute;
     top:0;left:0;
@@ -590,7 +593,7 @@
     <div class="toggle-field">
       <div class="tf-text">
         <div class="field-label">タップ毎の即時フィードバック</div>
-        <span class="field-sub">○×やズレ%をタップごとに表示するか。オフにすると結果画面でのみ確認できます。</span>
+        <span class="field-sub">○×やズレ%をタップごとに表示するか。オフにすると拍の流れるレール表示も消え、結果画面でのみ確認できます。</span>
       </div>
       <button type="button" class="toggle-switch on" id="toggle-feedback" aria-pressed="true">
         <span class="knob"></span>
@@ -841,6 +844,10 @@
       lastFeedbackBeat: -1,
       railBeatEls: [],
     };
+
+    // feedback OFF mode: hide the entire beat rail (visibility keeps its layout
+    // space, so the timer / feedback zone / tap pad stay in the same positions)
+    document.getElementById('beat-rail').classList.toggle('rail-hidden', !immediateFeedbackEnabled);
 
     buildRailDots();
     document.getElementById('time-total').textContent = '/' + durationSec + 's';
@@ -1148,11 +1155,11 @@
       const avgSigned = signedSum/signedN;
       let tendency;
       if(Math.abs(avgSigned) < 2){
-        tendency = '方向の偏りは小さく、テンポにほぼ正確に乗れています（早い/遅いの打ち消し合いを含む指標です）。';
+        tendency = '方向の偏りは小さく、テンポにほぼ正確に乗れています（前ズレ後ズレ含めた平均による指標です）。';
       } else if(avgSigned < 0){
-        tendency = `早いタップと遅いタップを打ち消さずに平均すると、<b>${Math.abs(avgSigned).toFixed(1)}%早い</b>方向への偏り（突っ走り）が見られます。`;
+        tendency = `前ズレ後ズレ含めた平均で、<b>${Math.abs(avgSigned).toFixed(1)}%早い</b>方向への偏り（突っ走り）が見られます。`;
       } else {
-        tendency = `早いタップと遅いタップを打ち消さずに平均すると、<b>${avgSigned.toFixed(1)}%遅い</b>方向への偏り（後ろ乗り）が見られます。`;
+        tendency = `前ズレ後ズレ含めた平均で、<b>${avgSigned.toFixed(1)}%遅い</b>方向への偏り（後ろ乗り）が見られます。`;
       }
       const onAvgDev = on.total ? on.devSum/on.total : null;
       const offAvgDev = off.total ? off.devSum/off.total : null;
@@ -1165,7 +1172,7 @@
         } else if(diff < -DEV_DIFF_THRESHOLD){
           offNote = '音が消失している間の方がズレが小さく、音に頼らずテンポを保てています。';
         } else {
-          offNote = '音あり時と消失時でズレの大きさに大きな差はありませんでした。';
+          offNote = '音あり時と消失時でズレ量に大きな差はありませんでした。';
         }
       }
       biasNote.innerHTML = tendency + (offNote ? ' ' + offNote : '');
