@@ -1295,9 +1295,39 @@
     showScreen('settings');
   }
 
-  document.getElementById('btn-abort').addEventListener('click', (e)=>{
-    e.currentTarget.blur(); // never leave keyboard focus on this button — Space must stay a beat tap
+  const btnAbort = document.getElementById('btn-abort');
+  btnAbort.addEventListener('pointerdown', (e)=>{
+    // pointerdown-driven (not click): the iOS zoom guard below suppresses
+    // touchend during the task, which would swallow synthesized click events
+    e.preventDefault();
+    btnAbort.blur(); // never leave keyboard focus on this button — Space must stay a beat tap
     abortTask();
+  });
+
+  /* ---- iOS zoom suppression (task screen only) ----
+     iOS Safari ignores user-scalable=no / maximum-scale (accessibility
+     policy) and its double-tap-zoom heuristic bypasses touch-action on rapid
+     alternating taps. The zoom decision is made at touchend, so the reliable
+     block is to preventDefault a touchend that follows another within the
+     double-tap window. gesturestart/gesturechange (WebKit-only, all iOS
+     browsers) additionally block pinch, e.g. when two tapping fingers overlap
+     and get misread as a pinch. Both guards are inert outside the task
+     screen, so settings sliders and accessibility zoom work as usual there. */
+  const DOUBLE_TAP_GUARD_MS = 400;
+  let lastTouchEndTime = 0;
+  document.addEventListener('touchend', (e)=>{
+    if(!screens.task.classList.contains('active')) return;
+    const now = Date.now();
+    if(now - lastTouchEndTime < DOUBLE_TAP_GUARD_MS){
+      e.preventDefault(); // kills the double-tap-zoom candidate
+    }
+    lastTouchEndTime = now;
+  }, {passive:false});
+
+  ['gesturestart','gesturechange'].forEach((type)=>{
+    document.addEventListener(type, (e)=>{
+      if(screens.task.classList.contains('active')) e.preventDefault();
+    }, {passive:false});
   });
 
   document.addEventListener('visibilitychange', ()=>{
